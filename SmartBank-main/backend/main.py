@@ -17,7 +17,7 @@ from backend.database import init_db, SessionLocal
 from backend.log_setup import setup_logging
 from backend.middleware import register_middleware
 from backend.models import Case, User
-from backend.auth import hash_password
+from backend.auth import _get_jwks
 
 setup_logging()
 
@@ -95,10 +95,6 @@ def seed_db():
             type=c["type"], status=c["status"], priority=c["priority"],
             channel=c["channel"], time=c["time"], date=c["date"],
         ))
-    if not db.query(User).filter(User.username == "admin").first():
-        db.add(User(id="admin", username="admin", hashed_password=hash_password("smartbank123"), role="admin"))
-    if not db.query(User).filter(User.username == "agent").first():
-        db.add(User(id="agent", username="agent", hashed_password=hash_password("agent123"), role="agent"))
     db.commit()
     db.close()
 
@@ -107,6 +103,7 @@ def seed_db():
 def on_start():
     init_db()
     seed_db()
+    _get_jwks()
 
 
 @app.get("/api/health")

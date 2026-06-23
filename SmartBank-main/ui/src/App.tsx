@@ -1,8 +1,10 @@
-import { lazy, Suspense } from 'react'
+import { useAuth } from '@clerk/clerk-react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
 import Loading from './components/Loading'
+import { setTokenGetter } from './services/api'
 
 const Login = lazy(() => import('./features/auth/Login'))
 const Dashboard = lazy(() => import('./features/dashboard/Dashboard'))
@@ -13,12 +15,17 @@ const Workflows = lazy(() => import('./features/workflows/Workflows'))
 const AdminLayout = lazy(() => import('./features/admin/AdminLayout'))
 
 export default function App() {
+  const { getToken } = useAuth()
+
+  useEffect(() => {
+    setTokenGetter(() => getToken())
+  }, [getToken])
+
   return (
     <Suspense fallback={<Loading />}>
       <Routes>
-        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<Login />} />
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/classify" element={<Classify />} />
           <Route path="/chat" element={<ChatPage />} />

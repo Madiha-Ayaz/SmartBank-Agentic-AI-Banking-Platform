@@ -1,8 +1,12 @@
-import { Navigate, Outlet } from 'react-router-dom'
-import { useAuthStore } from '../stores/authStore'
+import { useAuth } from '@clerk/clerk-react'
+import { Navigate } from 'react-router-dom'
+import Loading from './Loading'
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
-  if (!isAuthenticated) return <Navigate to="/login" replace />
+  const { isLoaded, isSignedIn } = useAuth()
+
+  if (!isLoaded) return <Loading />
+  if (!isSignedIn) return <Navigate to="/" replace />
+
   return <>{children}</>
 }

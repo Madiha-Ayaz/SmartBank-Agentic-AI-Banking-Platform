@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
 
-    DATABASE_URL: str = "sqlite:///./smartbank.db"
+    DATABASE_URL: str = "postgresql://neondb_owner:npg_cM6g5NfHdCAu@ep-empty-bonus-ahs8mfdt-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require"
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
 
@@ -29,10 +29,10 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
     CELERY_ENABLED: bool = False
 
-    JWT_SECRET_KEY: str = "smartbank-dev-secret-change-in-production"
-    JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
-    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    CLERK_SECRET_KEY: str = "sk_test_e1PXpguvuksPYHkxTH2kG7YlCpFqu6s81z6mBlZJfb"
+    CLERK_PUBLISHABLE_KEY: str = "pk_test_cmVsYXhlZC1tYXJ0aW4tODUuY2xlcmsuYWNjb3VudHMuZGV2JA"
+    CLERK_JWKS_URL: str = "https://relaxed-martin-85.clerk.accounts.dev/.well-known/jwks.json"
+    CLERK_ISSUER: str = "https://relaxed-martin-85.clerk.accounts.dev"
 
     CBS_API_BASE_URL: str = "https://cbs.smartbank.internal/api/v1"
     CBS_API_KEY: str = ""

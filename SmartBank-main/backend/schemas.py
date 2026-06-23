@@ -3,27 +3,10 @@ from typing import Optional, Any
 from datetime import datetime
 
 
-class TokenRequest(BaseModel):
-    username: str
-    password: str
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str = ""
-    token_type: str = "bearer"
-    expires_in: int = 15
-
-
-class UserCreate(BaseModel):
-    username: str
-    password: str
-    role: str = "agent"
-
-
 class UserResponse(BaseModel):
     id: str
     username: str
+    email: str = ""
     role: str
 
 

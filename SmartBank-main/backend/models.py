@@ -71,8 +71,9 @@ class Case(Base):
 class User(Base):
     __tablename__ = "users"
     id = Column(String, primary_key=True, default=gen_id)
-    username = Column(String, unique=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    clerk_id = Column(String, unique=True, nullable=False)
+    username = Column(String, nullable=False)
+    email = Column(String, nullable=True)
     role = Column(String, default="agent")
     created_at = Column(DateTime, default=now_utc)
 

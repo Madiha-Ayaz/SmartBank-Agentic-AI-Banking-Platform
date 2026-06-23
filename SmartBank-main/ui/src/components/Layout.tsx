@@ -1,6 +1,8 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../stores/authStore'
+import { useUser, useAuth, UserButton } from '@clerk/clerk-react'
+import { useEffect } from 'react'
+import { Outlet, NavLink } from 'react-router-dom'
 import { useChatStore } from '../stores/chatStore'
+import api from '../services/api'
 import ChatWidget from './ChatWidget'
 
 const navItems = [
@@ -13,14 +15,15 @@ const navItems = [
 ]
 
 export default function Layout() {
-  const { user, logout } = useAuthStore()
-  const navigate = useNavigate()
+  const { user } = useUser()
+  const { signOut } = useAuth()
   const toggleChat = useChatStore((s) => s.toggle)
 
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
-  }
+  useEffect(() => {
+    if (user?.id) {
+      api.post('/api/auth/sync', { email: user.primaryEmailAddress?.emailAddress }).catch(() => {})
+    }
+  }, [user?.id, user?.primaryEmailAddress?.emailAddress])
 
   return (
     <div className="layout">
@@ -38,10 +41,8 @@ export default function Layout() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <span>{user?.username ?? 'User'}</span>
-          <button onClick={handleLogout} className="btn btn-sm btn-outline">
-            Logout
-          </button>
+          <span>{user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? 'User'}</span>
+          <UserButton afterSignOutUrl="/" />
         </div>
       </aside>
       <main className="main-content">
