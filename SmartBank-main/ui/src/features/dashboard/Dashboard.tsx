@@ -1,12 +1,33 @@
 import { useEffect } from 'react'
 import { useDashboardStore } from '../../stores/dashboardStore'
+import ThreeDBackground from '../../components/ThreeDBackground'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell, Legend, AreaChart, Area,
 } from 'recharts'
 import { wsService } from '../../services/websocket'
 
-const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
+const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#3b82f6']
+
+function Gauge({ value, label, color }: { value: number; label: string; color: string }) {
+  const r = 52
+  const circ = 2 * Math.PI * r
+  const offset = circ - (value / 100) * circ
+  return (
+    <div className="stat-card" style={{ cursor: 'default' }}>
+      <div className="metric-gauge">
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          <circle className="bg" cx="60" cy="60" r={r} />
+          <circle className="fill" cx="60" cy="60" r={r} stroke={color}
+            strokeDasharray={circ} strokeDashoffset={offset}
+          />
+        </svg>
+        <div className="value" style={{ color }}>{value}%</div>
+      </div>
+      <span>{label}</span>
+    </div>
+  )
+}
 
 export default function Dashboard() {
   const { stats, cases, analytics, loading, fetchStats, fetchCases, fetchAnalytics } =
@@ -23,25 +44,46 @@ export default function Dashboard() {
       fetchAnalytics()
     })
     return () => { wsService.disconnect() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const statusData = analytics ? Object.entries(analytics.by_status).map(([k, v]) => ({ name: k, value: v })) : []
   const priorityData = analytics ? Object.entries(analytics.by_priority).map(([k, v]) => ({ name: k, value: v })) : []
   const channelData = analytics ? Object.entries(analytics.by_channel).map(([k, v]) => ({ name: k, value: v })) : []
 
+  const slaData = stats ? [
+    { name: 'Automation', value: stats.automation_rate },
+    { name: 'SLA', value: stats.sla_compliance },
+  ] : []
+
   return (
     <div className="page">
-      <h1>Dashboard</h1>
+      <ThreeDBackground />
+      <h1><span className="gradient-text">Dashboard</span></h1>
 
       {stats && (
-        <div className="stats-grid">
-          <div className="stat-card"><span>Total</span><strong>{stats.total_cases}</strong></div>
-          <div className="stat-card resolved"><span>Resolved</span><strong>{stats.resolved}</strong></div>
-          <div className="stat-card pending"><span>Pending</span><strong>{stats.pending}</strong></div>
-          <div className="stat-card review"><span>Human Review</span><strong>{stats.human_review}</strong></div>
-          <div className="stat-card"><span>Automation</span><strong>{stats.automation_rate}%</strong></div>
-          <div className="stat-card"><span>SLA</span><strong>{stats.sla_compliance}%</strong></div>
-        </div>
+        <>
+          <div className="stats-grid">
+            <div className="stat-card"><span>Total</span><strong>{stats.total_cases}</strong></div>
+            <div className="stat-card resolved"><span>Resolved</span><strong>{stats.resolved}</strong></div>
+            <div className="stat-card pending"><span>Pending</span><strong>{stats.pending}</strong></div>
+            <div className="stat-card review"><span>Human Review</span><strong>{stats.human_review}</strong></div>
+          </div>
+          <div className="stats-grid" style={{ marginTop: 0 }}>
+            <Gauge value={stats.automation_rate} label="Automation Rate" color="#6366f1" />
+            <Gauge value={stats.sla_compliance} label="SLA Compliance" color="#10b981" />
+            <div className="stat-card">
+              <span>Avg Resolution</span>
+              <strong style={{ fontSize: '1.2rem', WebkitTextFillColor: 'unset', color: 'var(--text)' }}>
+                {stats.avg_resolution_time}
+              </strong>
+            </div>
+            <div className="stat-card">
+              <span>Critical</span>
+              <strong style={{ WebkitTextFillColor: 'var(--danger)' }}>{stats.critical}</strong>
+            </div>
+          </div>
+        </>
       )}
 
       {analytics && (
@@ -54,6 +96,7 @@ export default function Dashboard() {
                   {statusData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Legend />
+                <Tooltip />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -61,10 +104,10 @@ export default function Dashboard() {
             <h3>By Priority</h3>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={priorityData}>
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+                <XAxis dataKey="name" tick={{ fill: '#8892b0' }} />
+                <YAxis tick={{ fill: '#8892b0' }} />
+                <Tooltip contentStyle={{ background: 'rgba(15,16,40,0.9)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 8 }} />
+                <Bar dataKey="value" fill="#6366f1" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -76,14 +119,28 @@ export default function Dashboard() {
                   {channelData.map((_, i) => <Cell key={i} fill={COLORS[(i + 2) % COLORS.length]} />)}
                 </Pie>
                 <Legend />
+                <Tooltip />
               </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="card">
+            <h3>Performance Trend</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <AreaChart data={slaData.length > 0 ? slaData : [{ name: 'Automation', value: 0 }, { name: 'SLA', value: 0 }]}>
+                <XAxis dataKey="name" tick={{ fill: '#8892b0' }} />
+                <YAxis domain={[0, 100]} tick={{ fill: '#8892b0' }} />
+                <Tooltip contentStyle={{ background: 'rgba(15,16,40,0.9)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 8 }} />
+                <Area type="monotone" dataKey="value" stroke="#6366f1" fill="rgba(99,102,241,0.1)" strokeWidth={2} />
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
       )}
 
       <div className="card" style={{ marginTop: 16 }}>
-        <h3>Recent Cases</h3>
+        <h3 style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.85rem', marginBottom: 12 }}>
+          Recent Cases
+        </h3>
         <div className="table-container">
           <table>
             <thead>
@@ -103,7 +160,7 @@ export default function Dashboard() {
                   <td>{c.type}</td>
                   <td><span className={`badge badge-${c.status}`}>{c.status}</span></td>
                   <td><span className={`badge badge-${c.priority}`}>{c.priority}</span></td>
-                  <td>{c.channel}</td>
+                  <td><span className="badge" style={{ background: 'rgba(99,102,241,0.1)', color: '#a78bfa', borderColor: 'rgba(99,102,241,0.2)' }}>{c.channel}</span></td>
                   <td>{c.date}</td>
                 </tr>
               ))}

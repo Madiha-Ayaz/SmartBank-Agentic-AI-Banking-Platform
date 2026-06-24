@@ -1,15 +1,24 @@
 {
   "name": "smartbank",
   "version": "2.0.0",
-  "description": "Agentic AI Banking Operations Platform — UiPath AgentHack + UBL FinTech Hackathon",
+  "description": "Agentic AI Banking Operations Platform",
   "private": true,
   "scripts": {
     "dev": "npm --prefix ui run dev",
     "build": "npm --prefix ui run build",
     "preview": "npm --prefix ui run preview",
-    "start": "npm run preview",
+    "server": "node server.js",
+    "start": "node server.js & npm --prefix ui run dev",
+    "start:win": "start \"SmartBank API\" cmd /c \"node server.js\" && start \"SmartBank UI\" cmd /c \"cd ui && npm run dev\" && start http://localhost:5173",
     "test": "python -m pytest",
     "lint": "python -m flake8 agents/ document-ai/ robots/"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "dependencies": {
+    "three": "^0.136.0",
+    "gsap": "^3.9.1",
+    "better-sqlite3": "^12.11.1",
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  }
 }

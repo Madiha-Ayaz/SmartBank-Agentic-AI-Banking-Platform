@@ -180,6 +180,20 @@
       <bpmn:out id="CallActivity_MB08_Out_Response" source="responsePayload" target="responsePayload" />
     </bpmn:callActivity>
 
+    <!-- SFGD Path: SmartFinance Guardian -->
+    <bpmn:sequenceFlow id="Flow_To_SFGD" name="SFGD - SmartFinance Guardian" sourceRef="Gateway_RouteByIntent" targetRef="CallActivity_SFGD">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">intentCode = "SFGD"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:callActivity id="CallActivity_SFGD" name="SmartFinance AI Guardian" calledElement="SmartFinanceGuardian" callableElementType="bpmn:process">
+      <bpmn:extensionElements>
+        <bpmn:property id="calledProcessVersion" value="1.0.0" />
+      </bpmn:extensionElements>
+      <bpmn:in id="CallActivity_SFGD_In_CaseId" source="caseId" target="caseId" />
+      <bpmn:in id="CallActivity_SFGD_In_CustomerId" source="customerId" target="customerId" />
+      <bpmn:in id="CallActivity_SFGD_In_RequestPayload" source="requestPayload" target="requestPayload" />
+      <bpmn:out id="CallActivity_SFGD_Out_Response" source="responsePayload" target="responsePayload" />
+    </bpmn:callActivity>
+
     <!-- Default Path: Human Agent Triage -->
     <bpmn:sequenceFlow id="Flow_Default_Triage" name="Default - Triage" sourceRef="Gateway_RouteByIntent" targetRef="UserTask_Triage">
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">True</bpmn:conditionExpression>
@@ -226,6 +240,7 @@
     <bpmn:sequenceFlow id="Flow_NIC06_To_Merge" name="" sourceRef="CallActivity_NIC06" targetRef="Gateway_Merge" />
     <bpmn:sequenceFlow id="Flow_IB07_To_Merge" name="" sourceRef="CallActivity_IB07" targetRef="Gateway_Merge" />
     <bpmn:sequenceFlow id="Flow_MB08_To_Merge" name="" sourceRef="CallActivity_MB08" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_SFGD_To_Merge" name="" sourceRef="CallActivity_SFGD" targetRef="Gateway_Merge" />
     <bpmn:sequenceFlow id="Flow_Triage_To_Merge" name="" sourceRef="UserTask_Triage" targetRef="Gateway_Merge" />
 
     <!-- Sequence Flow from Merge to End -->
@@ -309,9 +324,13 @@
       <bpmndi:BPMNShape id="Shape_MB08" bpmnElement="CallActivity_MB08">
         <dc:Bounds x="620" y="250" width="100" height="80" />
       </bpmndi:BPMNShape>
+      <!-- SFGD Call Activity -->
+      <bpmndi:BPMNShape id="Shape_SFGD" bpmnElement="CallActivity_SFGD">
+        <dc:Bounds x="620" y="350" width="100" height="80" />
+      </bpmndi:BPMNShape>
       <!-- Human Triage User Task -->
       <bpmndi:BPMNShape id="Shape_Triage" bpmnElement="UserTask_Triage">
-        <dc:Bounds x="620" y="400" width="100" height="80" />
+        <dc:Bounds x="620" y="470" width="100" height="80" />
       </bpmndi:BPMNShape>
       <!-- Merge Gateway -->
       <bpmndi:BPMNShape id="Shape_MergeGateway" bpmnElement="Gateway_Merge">
@@ -421,9 +440,14 @@
         <di:waypoint x="720" y="290" />
         <di:waypoint x="810" y="238" />
       </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SFGD_To_Merge" bpmnElement="Flow_SFGD_To_Merge">
+        <di:waypoint x="720" y="390" />
+        <di:waypoint x="835" y="390" />
+        <di:waypoint x="835" y="238" />
+      </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Triage_To_Merge" bpmnElement="Flow_Triage_To_Merge">
-        <di:waypoint x="720" y="440" />
-        <di:waypoint x="835" y="440" />
+        <di:waypoint x="720" y="510" />
+        <di:waypoint x="835" y="510" />
         <di:waypoint x="835" y="238" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Edge_Merge_To_End" bpmnElement="Flow_Merge_To_End">

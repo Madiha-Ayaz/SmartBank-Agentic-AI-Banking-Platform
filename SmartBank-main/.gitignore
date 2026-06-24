@@ -2,6 +2,9 @@ node_modules/
 __pycache__/
 *.pyc
 .env
+.env.local
+*.db-shm
+*.db-wal
 venv/
 .venv/
 dist/

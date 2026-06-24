@@ -18,6 +18,9 @@ def robot_status(current_user=Depends(get_current_user)) -> dict:
             {"name": "Document Generation", "status": "Online", "mode": "Active"},
             {"name": "Notification Dispatcher", "status": "Online", "mode": "Active"},
             {"name": "Audit Logger", "status": "Online", "mode": "Immutable"},
+            {"name": "Transaction Processing Bot", "status": "Online", "mode": "Simulation"},
+            {"name": "Communication Bot", "status": "Online", "mode": "Simulation"},
+            {"name": "Reporting Bot", "status": "Online", "mode": "Simulation"},
         ]
     }
 

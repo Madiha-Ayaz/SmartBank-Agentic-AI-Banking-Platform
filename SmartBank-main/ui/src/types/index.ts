@@ -95,3 +95,31 @@ export interface ChatMessage {
   text: string
   timestamp: number
 }
+
+export interface GoalItem {
+  id: number
+  title: string
+  target_amount: number
+  current_amount: number
+  deadline: string
+  category: string
+  status: string
+  created_at: string
+}
+
+export interface BudgetItem {
+  id: number
+  category: string
+  planned_amount: number
+  spent_amount: number
+  month: string
+  year: string
+}
+
+export interface BudgetTransaction {
+  id: number
+  budget_id: number
+  description: string
+  amount: number
+  date: string
+}

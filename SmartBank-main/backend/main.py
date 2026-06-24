@@ -37,7 +37,7 @@ app.add_middleware(
 
 register_middleware(app)
 
-from backend.routers import auth, dashboard, classify, chat, document, audit, workflows, robots, customers
+from backend.routers import auth, dashboard, classify, chat, document, audit, workflows, robots, customers, smartfinance
 
 app.include_router(auth.router)
 app.include_router(dashboard.router)
@@ -48,6 +48,7 @@ app.include_router(audit.router)
 app.include_router(workflows.router)
 app.include_router(robots.router)
 app.include_router(customers.router)
+app.include_router(smartfinance.router)
 
 from backend.websocket_manager import ws_manager
 
@@ -143,6 +144,16 @@ def api_root():
             "robot_notification": "POST /api/robots/notification/send",
             "robot_document": "POST /api/robots/document/generate",
             "robot_audit_verify": "GET /api/robots/audit/verify",
+            "smartfinance_status": "GET /api/smartfinance/status",
+            "smartfinance_monitor": "POST /api/smartfinance/monitor",
+            "smartfinance_fraud": "POST /api/smartfinance/fraud/analyze",
+            "smartfinance_bill": "POST /api/smartfinance/bill/analyze",
+            "smartfinance_recovery": "POST /api/smartfinance/recovery/analyze",
+            "smartfinance_coach": "POST /api/smartfinance/coach/analyze",
+            "smartfinance_communicate": "POST /api/smartfinance/communicate",
+            "smartfinance_rpa_execute": "POST /api/smartfinance/rpa/execute",
+            "smartfinance_rpa_comm": "POST /api/smartfinance/rpa/communicate",
+            "smartfinance_rpa_report": "POST /api/smartfinance/rpa/report",
         },
     }
 

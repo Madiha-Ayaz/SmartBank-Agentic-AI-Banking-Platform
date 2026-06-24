@@ -2,10 +2,10 @@
 
 import io
 import logging
+import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, UploadFile
-from PIL import Image
 
 from backend.cache import cache
 from backend.database import SessionLocal
@@ -28,29 +28,27 @@ async def verify_document(file: UploadFile) -> DocumentVerifyResponse:
     size = len(contents)
 
     try:
-        img = Image.open(io.BytesIO(contents))
-        result = doc_pipeline.process_document(img, "demo-customer")
+        suffix = Path(file.filename).suffix or ".png"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(contents)
+            tmp_path = tmp.name
+
+        result = doc_pipeline.process_document(tmp_path, "demo-customer")
 
         db = SessionLocal()
         try:
             doc = DocumentVerification(
                 filename=file.filename,
-                document_type=result.document_type.value
-                if hasattr(result.document_type, "value")
-                else str(result.document_type),
-                risk_score=result.risk_score,
-                risk_level=result.risk_level.value
-                if hasattr(result.risk_level, "value")
-                else str(result.risk_level),
-                decision=result.decision.value
-                if hasattr(result.decision, "value")
-                else str(result.decision),
-                fraud_indicators=list(result.fraud_indicators)
-                if hasattr(result, "fraud_indicators")
-                else [],
-                extracted_fields=result.extracted_fields
-                if hasattr(result, "extracted_fields")
-                else {},
+                document_type=result.ocr.fields[0].name if result.ocr and result.ocr.fields else "Unknown",
+                risk_score=result.fraud.risk_score if result.fraud else 0.0,
+                risk_level=result.fraud.risk_level.value if result.fraud else "safe",
+                decision=result.overall_status,
+                fraud_indicators=[i["indicator"] for i in (result.fraud.indicators_triggered if result.fraud else [])],
+                extracted_fields=(
+                    {f.name: f.value for f in result.ocr.fields}
+                    if result.ocr and result.ocr.fields
+                    else {"status": "simulated"}
+                ),
             )
             db.add(doc)
             db.commit()
@@ -70,5 +68,6 @@ async def verify_document(file: UploadFile) -> DocumentVerifyResponse:
             )
         finally:
             db.close()
+            Path(tmp_path).unlink(missing_ok=True)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Document processing failed: {e}")

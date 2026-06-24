@@ -12,12 +12,14 @@
   "dependencies": {
     "@clerk/clerk-react": "^5.61.8",
     "axios": "^1.7.0",
+    "framer-motion": "^12.41.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-hot-toast": "^2.5.0",
     "react-router-dom": "^7.6.0",
     "recharts": "^2.15.0",
     "socket.io-client": "^4.8.0",
+    "three": "^0.136.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
