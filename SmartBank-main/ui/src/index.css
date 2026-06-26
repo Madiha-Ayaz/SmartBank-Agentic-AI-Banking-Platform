@@ -315,6 +315,11 @@ tr:hover td { background: rgba(99, 102, 241, 0.04); }
 .badge-safe { background: rgba(16, 185, 129, 0.1); color: #34d399; border-color: rgba(16, 185, 129, 0.2); }
 .badge-suspicious { background: rgba(245, 158, 11, 0.1); color: #fbbf24; border-color: rgba(245, 158, 11, 0.2); }
 .badge-danger { background: rgba(239, 68, 68, 0.1); color: #f87171; border-color: rgba(239, 68, 68, 0.2); }
+.badge-warning { background: rgba(245, 158, 11, 0.1); color: #fbbf24; border-color: rgba(245, 158, 11, 0.2); }
+.btn-danger { background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; border: none; }
+.btn-danger:hover { transform: translateY(-1px); box-shadow: 0 0 15px rgba(239,68,68,0.4); }
+.btn-warning { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; border: none; }
+.btn-warning:hover { transform: translateY(-1px); box-shadow: 0 0 15px rgba(245,158,11,0.4); }
 .classify-form textarea,
 .doc-form textarea {
   width: 100%;

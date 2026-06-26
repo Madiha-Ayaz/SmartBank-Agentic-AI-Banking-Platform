@@ -9,6 +9,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const ari = require('./ari-engine');
 
 // ============================================================================
 // Database — PostgreSQL (Neon) with SQLite fallback
@@ -489,6 +490,7 @@ const RESOLUTION_WORKFLOWS = {
     ],
     successMessage: { en: 'YOUR ACCOUNT HAS BEEN SECURED. All outgoing transactions are blocked. A fraud investigator will contact you within 30 minutes. Call 0800-12345 immediately.', ur: 'Aap ka account mehfooz kar liya gaya hai. Tamam transactions block kar diye gaye hain. Ek fraud investigator 30 minute mein aap se contact karega. Foran 0800-12345 par call karein.' }
   },
+  SEC01: ari.SEC01_WORKFLOW,
 };
 
 function executeResolution(intentCode, text, channel) {
@@ -640,8 +642,82 @@ app.get('/api/dashboard/analytics', authMiddleware, (req, res) => {
 // CLASSIFICATION — Detects intent AND auto-resolves immediately
 // ============================================================================
 app.post('/api/classify', authMiddleware, async (req, res) => {
-  const { text, channel = 'web' } = req.body;
+  const { text, channel = 'web', telemetry = {} } = req.body;
   if (!text) return res.status(400).json({ detail: 'text is required' });
+
+  // STEP 0 — ARIE cognitive interception (scam, Urdu repair, circuit breaker)
+  const ariResult = ari.ariClassify(text, telemetry);
+
+  if (ariResult.interceptType === 'SCAM_LOCKDOWN') {
+    const scamWorkflow = ari.executeScamLockdown('SEC01', text, channel, req.currentUser);
+    const caseId = scamWorkflow.caseId;
+
+    db.prepare('INSERT INTO cases (id,customer_id,customer_name,type,status,priority,channel,time,date,intent_code,resolution,sub_intent,sentiment,category,resolution_progress,notification_sent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)').run(
+      caseId, req.currentUser?.clerk_id || 'anonymous', req.currentUser?.username || 'Customer',
+      'SEC01 — Proactive Scam Lockdown', 'Resolved', 'Critical', channel, '<5s', new Date().toISOString().split('T')[0],
+      'SEC01', scamWorkflow.successMessage.en, null, 'negative', 'Fraud', JSON.stringify(scamWorkflow.steps)
+    );
+    for (const s of scamWorkflow.steps) {
+      db.prepare('INSERT INTO resolution_steps (case_id,step_number,action,status,completed_at,details) VALUES (?,?,?,?,?,?)').run(caseId, s.step, s.action, s.status, new Date().toISOString(), s.detail);
+    }
+    db.prepare('INSERT INTO audit_logs (action,actor,resource,details) VALUES (?,?,?,?)').run('ARIE Scam Lockdown', 'system', `/api/cases/${caseId}`, `SEC01: Proactive scam lockdown — ${ariResult.targetIntent.justification}`);
+
+    return res.json({
+      arie_intercepted: true,
+      intercept_type: 'SCAM_LOCKDOWN',
+      request_id: caseId,
+      timestamp: new Date().toISOString(),
+      channel,
+      detected_language: 'ur',
+      intent: { code: 'SEC01', label: 'Proactive Scam Lockdown', confidence: ariResult.targetIntent.confidence },
+      sentiment: 'negative',
+      category: 'Fraud',
+      escalate_to_human: true,
+      auto_resolved: true,
+      resolution: { action: scamWorkflow.action, steps_completed: scamWorkflow.steps.length, steps: scamWorkflow.steps.map(s => ({ step: s.step, action: s.action, status: s.status })), message: scamWorkflow.successMessage.ur },
+    });
+  }
+
+  if (ariResult.interceptType === 'URDU_REPAIR') {
+    const repair = ariResult.targetIntent;
+    const priority = repair.priority === 'CRITICAL' ? 'Critical' : repair.priority === 'HIGH' ? 'High' : 'Medium';
+    const result = createCaseAndResolve(repair.code, repair.label, priority, repair.sentiment, repair.category, text, channel, req.currentUser);
+
+    return res.json({
+      arie_intercepted: true,
+      intercept_type: 'URDU_REPAIR',
+      repair_justification: repair.justification,
+      request_id: result.caseId,
+      timestamp: new Date().toISOString(),
+      channel,
+      detected_language: repair.language,
+      intent: { code: repair.code, label: repair.label, confidence: repair.confidence },
+      sentiment: repair.sentiment,
+      category: repair.category,
+      escalate_to_human: false,
+      auto_resolved: true,
+      resolution: { action: result.workflow.action, steps_completed: result.steps.length, steps: result.steps, message: result.workflow.successMessage.ur },
+    });
+  }
+
+  if (ariResult.interceptType === 'CIRCUIT_BREAKER') {
+    return res.json({
+      arie_intercepted: true,
+      intercept_type: 'CIRCUIT_BREAKER',
+      request_id: 'DLQ-' + ariResult.resilienceAction.queueId,
+      timestamp: new Date().toISOString(),
+      channel,
+      detected_language: 'en',
+      intent: { code: 'UNKNOWN', label: 'Queued — Core Banking Down', confidence: 0 },
+      sentiment: 'neutral',
+      category: 'General',
+      escalate_to_human: false,
+      auto_resolved: false,
+      queued_for_auto_healing: true,
+      audit_hash: ariResult.resilienceAction.auditHash,
+      customer_message: ariResult.resilienceAction.customerMessage,
+    });
+  }
 
   // Use AI first, fallback to local
   const sysPrompt = `You are a banking classifier. Return ONLY JSON:
@@ -671,6 +747,7 @@ app.post('/api/classify', authMiddleware, async (req, res) => {
   );
 
   res.json({
+    arie_intercepted: false,
     request_id: result.caseId,
     timestamp: new Date().toISOString(),
     channel,
@@ -693,10 +770,84 @@ app.post('/api/classify', authMiddleware, async (req, res) => {
 // ZARA CHAT — Detects problems AND solves them immediately
 // ============================================================================
 app.post('/api/chat', authMiddleware, async (req, res) => {
-  const { message, language = 'en' } = req.body;
+  const { message, language = 'en', telemetry = {} } = req.body;
   if (!message) return res.status(400).json({ detail: 'message is required' });
 
   db.prepare('INSERT INTO chat_memory (user_id,role,message) VALUES (?,?,?)').run(req.currentUser?.clerk_id || 'anonymous', 'user', message);
+
+  // STEP 0 — ARIE cognitive interception
+  const ariResult = ari.ariClassify(message, telemetry);
+
+  if (ariResult.interceptType === 'SCAM_LOCKDOWN') {
+    const scamWorkflow = ari.executeScamLockdown('SEC01', message, 'chat', req.currentUser);
+    const caseId = scamWorkflow.caseId;
+    db.prepare('INSERT INTO cases (id,customer_id,customer_name,type,status,priority,channel,time,date,intent_code,resolution,sub_intent,sentiment,category,resolution_progress,notification_sent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)').run(
+      caseId, req.currentUser?.clerk_id || 'anonymous', req.currentUser?.username || 'Customer',
+      'SEC01 — Proactive Scam Lockdown', 'Resolved', 'Critical', 'chat', '<5s', new Date().toISOString().split('T')[0],
+      'SEC01', scamWorkflow.successMessage.en, null, 'negative', 'Fraud', JSON.stringify(scamWorkflow.steps)
+    );
+    for (const s of scamWorkflow.steps) {
+      db.prepare('INSERT INTO resolution_steps (case_id,step_number,action,status,completed_at,details) VALUES (?,?,?,?,?,?)').run(caseId, s.step, s.action, s.status, new Date().toISOString(), s.detail);
+    }
+    db.prepare('INSERT INTO audit_logs (action,actor,resource,details) VALUES (?,?,?,?)').run('ARIE Scam Lockdown', 'system', `/api/cases/${caseId}`, `SEC01: Proactive scam lockdown from chat — ${ariResult.targetIntent.justification}`);
+    return res.json({
+      text: scamWorkflow.successMessage.ur,
+      language: 'ur',
+      module: 'safety_fraud',
+      escalation: true,
+      escalation_reason: 'SEC01 Proactive Scam Lockdown triggered',
+      auto_resolved: true,
+      case_id: caseId,
+      problem: 'Active Scam Attempt Detected',
+      resolution_action: scamWorkflow.action,
+      steps: scamWorkflow.steps.map(s => s.action),
+      priority: 'Critical',
+      arie_intercepted: true,
+      intercept_type: 'SCAM_LOCKDOWN',
+    });
+  }
+
+  if (ariResult.interceptType === 'URDU_REPAIR') {
+    const repair = ariResult.targetIntent;
+    const priority = repair.priority === 'CRITICAL' ? 'Critical' : repair.priority === 'HIGH' ? 'High' : 'Medium';
+    const resolution = createCaseAndResolve(repair.code, repair.label, priority, repair.sentiment, repair.category, message, 'chat', req.currentUser);
+    db.prepare('INSERT INTO audit_logs (action,actor,resource,details) VALUES (?,?,?,?)').run('ARIE Urdu Repair', 'system', `/api/cases/${resolution.caseId}`, `${repair.code}: Repaired via telemetry context — ${repair.justification}`);
+    return res.json({
+      text: resolution.workflow.successMessage.ur,
+      language: 'ur',
+      module: repair.category ? repair.category.toLowerCase() : null,
+      escalation: false,
+      escalation_reason: null,
+      auto_resolved: true,
+      case_id: resolution.caseId,
+      problem: `${repair.label} (ARIE Repaired)`,
+      resolution_action: resolution.workflow.action,
+      steps: resolution.steps.map(s => s.action),
+      priority,
+      arie_intercepted: true,
+      intercept_type: 'URDU_REPAIR',
+      repair_justification: repair.justification,
+    });
+  }
+
+  if (ariResult.interceptType === 'CIRCUIT_BREAKER') {
+    return res.json({
+      text: ariResult.resilienceAction.customerMessage.ur,
+      language: 'ur',
+      module: null,
+      escalation: false,
+      escalation_reason: null,
+      auto_resolved: false,
+      case_id: 'DLQ-' + ariResult.resilienceAction.queueId,
+      problem: 'Core Banking Down — Request Queued',
+      resolution_action: 'Self-Healing Queue',
+      steps: ['Request encrypted and saved to resilient DLQ', 'Audit hash generated: ' + ariResult.resilienceAction.auditHash.slice(0, 16) + '...', 'Auto-processing on system recovery'],
+      priority: 'Medium',
+      arie_intercepted: true,
+      intercept_type: 'CIRCUIT_BREAKER',
+      audit_hash: ariResult.resilienceAction.auditHash,
+    });
+  }
 
   // STEP 1: Detect if this is a banking problem that needs solving
   const local = localDetect(message);
@@ -779,6 +930,7 @@ Respond ONLY JSON: {"text":"...","language":"en|ur","module":"product_education|
     }
   }
 
+  result.arrie_intercepted = false;
   db.prepare('INSERT INTO chat_memory (user_id,role,message,module) VALUES (?,?,?,?)').run(req.currentUser?.clerk_id || 'anonymous', 'assistant', result.text, result.module || null);
   db.prepare('DELETE FROM chat_memory WHERE id NOT IN (SELECT id FROM chat_memory ORDER BY id DESC LIMIT 50)').run();
 
@@ -1005,6 +1157,22 @@ app.get('/api/auth/check-admin', authMiddleware, (req, res) => {
   res.json({ isAdmin: req.currentUser.role === 'admin', email: req.currentUser.email, role: req.currentUser.role });
 });
 
+// ============================================================================
+// ARIE — Autonomous Resilience & Interceptor Engine API
+// ============================================================================
+app.get('/api/arie/status', authMiddleware, (req, res) => {
+  const ariCount = db.prepare("SELECT COUNT(*) as c FROM cases WHERE intent_code LIKE 'SEC%'").get().c;
+  const repairCount = db.prepare("SELECT COUNT(*) as c FROM audit_logs WHERE action = 'ARIE Urdu Repair'").get().c;
+  const recentIntercepts = db.prepare("SELECT id, type, timestamp, details FROM audit_logs WHERE action LIKE 'ARIE%' ORDER BY id DESC LIMIT 10").all();
+  res.json({
+    arie_active: true,
+    cognitive_capabilities: ['Proactive Scam Interceptor (SEC01)', 'Context-Aware Roman Urdu Repair Engine', 'Self-Healing Circuit Breaker'],
+    stats: { total_scam_lockdowns: ariCount, total_urdu_repairs: repairCount },
+    recent_intercepts: recentIntercepts.map(l => ({ id: l.id, type: l.action, timestamp: l.timestamp, details: l.details })),
+    core_banking_status: { api_live: true, circuit_breaker_engaged: false },
+  });
+});
+
 // Audit
 app.post('/api/audit/log', authMiddleware, (req, res) => {
   const { action, actor, resource, details } = req.body;
@@ -1140,7 +1308,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`║  Mode:       ${DEMO_MODE ? 'DEMO' : 'PRODUCTION'}                                       ║`);
   console.log('╠══════════════════════════════════════════════════════════════╣');
   console.log('║  PROBLEM SOLVING — Every request → Auto-Resolved           ║');
-  console.log('║  14 intent patterns detected | 12 resolution workflows     ║');
+  console.log('║  14 intent patterns + ARIE (SEC01/UrduRepair/CircuitBrk)   ║');
   console.log('║  Zara: Detects problems → Solves → Confirms                ║');
   console.log('║  Classification + Chat = REAL ACTION, not just talk        ║');
   console.log('╠══════════════════════════════════════════════════════════════╣');

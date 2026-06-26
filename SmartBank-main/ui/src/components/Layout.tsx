@@ -13,6 +13,7 @@ const navItems = [
   { label: 'Goals', path: '/goals', icon: '\u{1F3AF}' },
   { label: 'Budget', path: '/budget', icon: '\u{1F4B0}' },
   { label: 'Chat', path: '/chat', icon: '\u{1F4AC}' },
+  { label: 'ARIE', path: '/arie', icon: '\u26A1' },
   { label: 'Admin', path: '/admin', icon: '\u2691' },
   { label: 'Guide', path: '/guide', icon: '\u2753' },
 ]
