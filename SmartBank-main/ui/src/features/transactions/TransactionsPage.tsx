@@ -1,6 +1,14 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 import ThreeDBackground from '../../components/ThreeDBackground'
+import { useSessionContext } from '../../stores/sessionContextStore'
+
+interface FraudFlag {
+  severity: 'high' | 'medium' | 'low'
+  label: string
+  reason: string
+}
 
 const TRANSACTIONS = [
   { id: 1, date: '2025-06-27', time: '09:30', description: 'Salary Credit TechCorp', category: 'Income', amount: 185000, type: 'credit', status: 'completed', card: '•••• 3310', ref: 'SAL-2025-06-001', merchant: 'TechCorp Solutions (Pvt) Ltd', icon: '\u{1F3E2}' },
@@ -34,14 +42,70 @@ const CAT_COLORS: Record<string, string> = {
   Business: '#0ea5e9', Cash: '#f97316', Education: '#a855f7',
 }
 
+function getTimeMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number)
+  return h * 60 + m
+}
+
+function detectFraud(tx: typeof TRANSACTIONS[0], all: typeof TRANSACTIONS): FraudFlag[] {
+  const flags: FraudFlag[] = []
+  if (tx.amount > 50000 && tx.type === 'debit') {
+    flags.push({ severity: 'high', label: 'Large Transaction', reason: 'Large amount debit transaction \u2014 please verify this was you' })
+  }
+  if (tx.status === 'failed') {
+    flags.push({ severity: 'medium', label: 'Failed Transaction', reason: 'Failed \u2014 retry or dispute if amount was deducted' })
+  }
+  if (tx.category === 'Transfer' && tx.amount > 10000) {
+    flags.push({ severity: 'low', label: 'High Value Transfer', reason: 'High value transfer \u2014 confirm recipient' })
+  }
+  for (const other of all) {
+    if (other.id === tx.id) continue
+    if (other.merchant === tx.merchant && other.date === tx.date) {
+      const diff = Math.abs(getTimeMinutes(tx.time) - getTimeMinutes(other.time))
+      if (diff < 60) {
+        flags.push({ severity: 'low', label: 'Possible Duplicate', reason: 'Same merchant within 1 hour \u2014 possible duplicate transaction' })
+        break
+      }
+    }
+  }
+  return flags
+}
+
 export default function TransactionsPage() {
+  const navigate = useNavigate()
+  const sessionCtx = useSessionContext()
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('All')
   const [catFilter, setCatFilter] = useState('All')
   const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [showFlaggedOnly, setShowFlaggedOnly] = useState(false)
+
+  // Update session context with flagged count
+  const fraudFlagsMap = useMemo(() => {
+    const map: Record<number, FraudFlag[]> = {}
+    for (const t of TRANSACTIONS) {
+      const flags = detectFraud(t, TRANSACTIONS)
+      if (flags.length > 0) map[t.id] = flags
+    }
+    return map
+  }, [])
+
+  useEffect(() => {
+    sessionCtx.setFlaggedCount(Object.keys(fraudFlagsMap).length)
+  }, [fraudFlagsMap, sessionCtx])
+
+  // Listen for filterSuspicious event from robot
+  useEffect(() => {
+    const handler = () => { setShowFlaggedOnly((p) => !p) }
+    window.addEventListener('filterSuspicious', handler)
+    return () => window.removeEventListener('filterSuspicious', handler)
+  }, [])
+
+  const flaggedCount = Object.keys(fraudFlagsMap).length
 
   const filtered = useMemo(() => {
     return TRANSACTIONS.filter(t => {
+      if (showFlaggedOnly && !fraudFlagsMap[t.id]) return false
       if (search) {
         const q = search.toLowerCase()
         if (!t.description.toLowerCase().includes(q) && !t.merchant.toLowerCase().includes(q) && !t.ref.toLowerCase().includes(q)) return false
@@ -51,7 +115,7 @@ export default function TransactionsPage() {
       if (catFilter !== 'All' && t.category !== catFilter) return false
       return true
     })
-  }, [search, typeFilter, catFilter])
+  }, [search, typeFilter, catFilter, showFlaggedOnly, fraudFlagsMap])
 
   const totalIncome = useMemo(() => TRANSACTIONS.filter(t => t.type === 'credit').reduce((s, t) => s + t.amount, 0), [])
   const totalSpent = useMemo(() => TRANSACTIONS.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0), [])
@@ -64,11 +128,23 @@ export default function TransactionsPage() {
       <ThreeDBackground />
       <h1><span className="gradient-text">Transactions</span></h1>
 
+      {flaggedCount > 0 && (
+        <div className="card" style={{ marginBottom: 16, border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: '1.2rem' }}>{'\u26A0\uFE0F'}</span>
+            <span style={{ color: 'var(--danger)', fontSize: '0.9rem' }}>
+              Main ne <strong>{flaggedCount}</strong> suspicious transactions detect kiye hain. Please review karein.
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="stats-grid" style={{ marginBottom: 20 }}>
         <div className="stat-card"><span>Total</span><strong>{TRANSACTIONS.length}</strong></div>
         <div className="stat-card"><span>Income</span><strong style={{ color: 'var(--success)' }}>{fmt(totalIncome)}</strong></div>
         <div className="stat-card"><span>Spent</span><strong style={{ color: 'var(--warning)' }}>{fmt(totalSpent)}</strong></div>
         <div className="stat-card"><span>Net Balance</span><strong style={{ color: netBalance >= 0 ? 'var(--success)' : 'var(--danger)' }}>{fmt(netBalance)}</strong></div>
+        <div className="stat-card"><span>Flagged</span><strong style={{ color: 'var(--danger)' }}>{flaggedCount}</strong></div>
       </div>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -95,10 +171,15 @@ export default function TransactionsPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {filtered.map(t => {
           const isExpanded = expandedId === t.id
+          const flags = fraudFlagsMap[t.id] || []
+          const highestSeverity = flags.length > 0 ? flags.reduce((a, b) => a.severity === 'high' ? a : b) : null
           return (
-            <motion.div key={t.id} layout className="card" style={{ padding: '14px 18px', cursor: 'pointer' }}
+            <motion.div key={t.id} layout className="card" style={{ padding: '14px 18px', cursor: 'pointer', border: flags.length > 0 ? `1px solid ${highestSeverity?.severity === 'high' ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.4)'}` : undefined }}
               onClick={() => setExpandedId(isExpanded ? null : t.id)} whileHover={{ scale: 1.005 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                {flags.length > 0 && (
+                  <div style={{ fontSize: '1rem', flexShrink: 0 }}>{highestSeverity?.severity === 'high' ? '\u{1F6A8}' : '\u26A0\uFE0F'}</div>
+                )}
                 <div style={{ width: 40, height: 40, borderRadius: 10, background: `${CAT_COLORS[t.category] || '#6366f1'}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>
                   {t.icon}
                 </div>
@@ -122,6 +203,18 @@ export default function TransactionsPage() {
               <AnimatePresence>
                 {isExpanded && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
+                    {flags.map((f, i) => (
+                      <div key={i} style={{
+                        marginTop: i === 0 ? 14 : 8, padding: '10px 14px', borderRadius: 8,
+                        background: f.severity === 'high' ? 'rgba(239,68,68,0.1)' : f.severity === 'medium' ? 'rgba(245,158,11,0.1)' : 'rgba(251,146,60,0.1)',
+                        border: `1px solid ${f.severity === 'high' ? 'rgba(239,68,68,0.3)' : f.severity === 'medium' ? 'rgba(245,158,11,0.3)' : 'rgba(251,146,60,0.3)'}`,
+                      }}>
+                        <div style={{ fontWeight: 600, marginBottom: 4, color: f.severity === 'high' ? 'var(--danger)' : f.severity === 'medium' ? 'var(--warning)' : '#f97316' }}>
+                          {f.severity === 'high' ? '\u{1F6A8} Fraud Alert:' : f.severity === 'medium' ? '\u26A0\uFE0F Warning:' : '\u{1F514} Notice:'}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{f.reason}</div>
+                      </div>
+                    ))}
                     <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.85rem' }}>
                       <div><span style={{ color: 'var(--text-muted)' }}>Reference: </span>{t.ref}</div>
                       <div><span style={{ color: 'var(--text-muted)' }}>Merchant: </span>{t.merchant}</div>
@@ -130,9 +223,15 @@ export default function TransactionsPage() {
                       <div><span style={{ color: 'var(--text-muted)' }}>Status: </span><span className={`badge badge-${t.status === 'completed' ? 'safe' : t.status === 'pending' ? 'warning' : 'danger'}`}>{t.status}</span></div>
                       <div><span style={{ color: 'var(--text-muted)' }}>Amount: </span><span style={{ color: t.type === 'credit' ? 'var(--success)' : 'var(--text)', fontWeight: 600 }}>PKR {t.amount.toLocaleString()}</span></div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
                       <button className="btn btn-sm" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--danger)', border: '1px solid rgba(239,68,68,0.2)' }} onClick={(e) => { e.stopPropagation(); alert('Dispute raised for transaction ' + t.ref); }}>Raise Dispute</button>
                       <button className="btn btn-sm" style={{ background: 'rgba(139,92,246,0.1)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.2)' }} onClick={(e) => { e.stopPropagation(); alert('Receipt emailed to registered address.'); }}>Email Receipt</button>
+                      {flags.length > 0 && (
+                        <>
+                          <button className="btn btn-sm" style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--success)', border: '1px solid rgba(16,185,129,0.2)' }} onClick={(e) => { e.stopPropagation(); alert('Thanks for confirming. We\'ll note this.'); }}>This was me &#10003;</button>
+                          <button className="btn btn-sm" style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--danger)', border: '1px solid rgba(239,68,68,0.3)' }} onClick={(e) => { e.stopPropagation(); navigate('/cards', { state: { triggerBlock: true } }) }}>Block Card Now &#128274;</button>
+                        </>
+                      )}
                     </div>
                   </motion.div>
                 )}

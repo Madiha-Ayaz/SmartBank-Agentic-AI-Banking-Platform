@@ -6,7 +6,7 @@ interface ChatState {
   messages: ChatMessage[]
   isOpen: boolean
   loading: boolean
-  sendMessage: (text: string) => Promise<void>
+  sendMessage: (text: string, sessionContext?: string) => Promise<void>
   toggle: () => void
   addMessage: (msg: ChatMessage) => void
 }
@@ -22,13 +22,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isOpen: false,
   loading: false,
 
-  sendMessage: async (text: string) => {
+  sendMessage: async (text: string, sessionContext?: string) => {
     if (!text.trim()) return
     const userMsg: ChatMessage = { role: 'user', text: text.trim(), timestamp: Date.now() }
     set((s) => ({ messages: [...s.messages, userMsg], loading: true }))
 
     try {
-      const res = await api.post('/api/chat', { message: text })
+      const body: Record<string, unknown> = { message: text }
+      if (sessionContext) body.session_context = sessionContext
+      const res = await api.post('/api/chat', body)
       const assistantMsg: ChatMessage = {
         role: 'assistant',
         text: res.data.text || 'Sorry, I could not process that.',

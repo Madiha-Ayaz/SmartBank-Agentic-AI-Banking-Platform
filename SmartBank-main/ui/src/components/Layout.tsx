@@ -4,6 +4,7 @@ import { Outlet, NavLink } from 'react-router-dom'
 import { useChatStore } from '../stores/chatStore'
 import api from '../services/api'
 import ChatWidget from './ChatWidget'
+import LiveRobot from './LiveRobot'
 
 const navItems = [
   { label: 'Dashboard', path: '/dashboard', icon: '\u2302' },
@@ -67,6 +68,7 @@ export default function Layout() {
         </svg>
       </button>
       <ChatWidget />
+      <LiveRobot />
     </div>
   )
 }

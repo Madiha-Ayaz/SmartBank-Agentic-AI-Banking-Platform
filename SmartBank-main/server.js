@@ -10,6 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const ari = require('./ari-engine');
+const rag = require('./rag-knowledge');
 
 // ============================================================================
 // Database — PostgreSQL (Neon) with SQLite fallback
@@ -770,7 +771,7 @@ app.post('/api/classify', authMiddleware, async (req, res) => {
 // ZARA CHAT — Detects problems AND solves them immediately
 // ============================================================================
 app.post('/api/chat', authMiddleware, async (req, res) => {
-  const { message, language = 'en', telemetry = {} } = req.body;
+  const { message, language = 'en', telemetry = {}, session_context } = req.body;
   if (!message) return res.status(400).json({ detail: 'message is required' });
 
   db.prepare('INSERT INTO chat_memory (user_id,role,message) VALUES (?,?,?)').run(req.currentUser?.clerk_id || 'anonymous', 'user', message);
@@ -883,14 +884,20 @@ app.post('/api/chat', authMiddleware, async (req, res) => {
     });
   }
 
-  // STEP 3: If it's a knowledge/info question, use KB or AI
+  // STEP 3: RAG — Retrieve app context for user query
+  const ragContext = rag.buildRagContext(message);
+
+  // STEP 4: If it's a knowledge/info question, use KB or AI with RAG context
   const history = db.prepare('SELECT role, message FROM chat_memory WHERE user_id = ? ORDER BY id DESC LIMIT 5').all(req.currentUser?.clerk_id || 'anonymous').reverse();
   const contextStr = history.map(h => `${h.role}: ${h.message}`).join('\n');
 
-  const sysPrompt = `You are Zara, SmartBank's AI guide. Speak ${isUrdu ? 'Roman Urdu' : 'English'}. Warm, simple, max 100 words. NO PII. End with a question.
+  const sysPrompt = `You are Zara, SmartBank's AI guide. Speak ${isUrdu ? 'Roman Urdu' : 'English'}. Warm, simple, max 150 words. NO PII. End with a question.
 Conversation history: ${contextStr}
 Topics: account types, profit rates, fees, ATM, limits, loans, insurance, account opening, debit card, internet banking, RAAST, PayPak, SME, safety (OTP, vishing, phishing, SIM swap, skimming)
-Respond ONLY JSON: {"text":"...","language":"en|ur","module":"product_education|process_guidance|sme_literacy|digital_onboarding|safety_fraud|null","escalation":false,"escalation_reason":null}`;
+${ragContext}
+${session_context ? `User session context (what the user has recently done in the app): ${session_context}` : ''}
+IMPORTANT: Answer questions about SmartBank's app features, pages, and data using the app context above. If user asks about their cards, transactions, loans, budget, goals, or any app feature, use the provided data to answer accurately.
+Respond ONLY JSON: {"text":"...","language":"en|ur","module":"product_education|process_guidance|sme_literacy|digital_onboarding|safety_fraud|app_features|null","escalation":false,"escalation_reason":null}`;
   let result = await callAI(sysPrompt, message, 'json');
 
   if (!result) {
@@ -920,6 +927,24 @@ Respond ONLY JSON: {"text":"...","language":"en|ur","module":"product_education|
     else if (/sme|business|trade|lc|sbp|msme/i.test(msg)) {
       const topic = /trade|lc|import|export/i.test(msg) ? 'trade_finance' : /sbp|msme|refinance/i.test(msg) ? 'sbp_msme' : 'business_accounts';
       result = { text: KB.SME_INFO[topic][isUrdu ? 'ur' : 'en'], language: isUrdu ? 'ur' : 'en', module: 'sme_literacy', escalation: false, escalation_reason: null };
+    }
+    // App feature questions — use RAG context as fallback
+    else if (/card|freeze|block|transaction|budget|goal|dashboard|loan|arie/i.test(msg)) {
+      const appCtx = rag.getRelevantContext(msg);
+      let answer = '';
+      for (const ctx of appCtx) {
+        if (ctx.type === 'page') {
+          answer += `${ctx.title}: ${ctx.description.split('.')[0]}. `;
+        } else if (ctx.type === 'general_info') {
+          answer += `SmartBank app — User: ${ctx.user}. `;
+        } else {
+          answer += `${ctx.text} `;
+        }
+      }
+      result = {
+        text: answer || (isUrdu ? "Aap SmartBank ke different pages use kar sakte hain. Jaise Dashboard, Cards, Transactions, Loans, Budget, Goals, ARIE." : "You can use SmartBank's various pages like Dashboard, Cards, Transactions, Loans, Budget, Goals, ARIE. Navigate using the sidebar."),
+        language: isUrdu ? 'ur' : 'en', module: 'app_features', escalation: false, escalation_reason: null
+      };
     }
     // Greeting fallback
     else {
@@ -1163,12 +1188,12 @@ app.get('/api/auth/check-admin', authMiddleware, (req, res) => {
 app.get('/api/arie/status', authMiddleware, (req, res) => {
   const ariCount = db.prepare("SELECT COUNT(*) as c FROM cases WHERE intent_code LIKE 'SEC%'").get().c;
   const repairCount = db.prepare("SELECT COUNT(*) as c FROM audit_logs WHERE action = 'ARIE Urdu Repair'").get().c;
-  const recentIntercepts = db.prepare("SELECT id, type, timestamp, details FROM audit_logs WHERE action LIKE 'ARIE%' ORDER BY id DESC LIMIT 10").all();
+  const recentIntercepts = db.prepare("SELECT id, action, timestamp, details FROM audit_logs WHERE action LIKE 'ARIE%' ORDER BY id DESC LIMIT 10").all();
   res.json({
     arie_active: true,
     cognitive_capabilities: ['Proactive Scam Interceptor (SEC01)', 'Context-Aware Roman Urdu Repair Engine', 'Self-Healing Circuit Breaker'],
     stats: { total_scam_lockdowns: ariCount, total_urdu_repairs: repairCount },
-    recent_intercepts: recentIntercepts.map(l => ({ id: l.id, type: l.action, timestamp: l.timestamp, details: l.details })),
+    recent_intercepts: recentIntercepts.map(l => ({ id: l.id, type: l.action, timestamp: l.timestamp, details: l.details || '' })),
     core_banking_status: { api_live: true, circuit_breaker_engaged: false },
   });
 });

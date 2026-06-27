@@ -778,3 +778,24 @@ tr:hover td { background: rgba(99, 102, 241, 0.04); }
   border-radius: 4px;
   transition: width 0.3s ease;
 }
+
+@keyframes robotPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(16,185,129,0); }
+}
+@keyframes robotBlink {
+  0%,88%,100% { transform: scaleY(1); }
+  92% { transform: scaleY(0.08); }
+}
+@keyframes robotMouth {
+  0%,100% { transform: scaleY(1); width: 18px; }
+  50% { transform: scaleY(0.3); width: 14px; }
+}
+@keyframes robotWalk {
+  from { transform: rotate(-18deg); }
+  to   { transform: rotate(18deg); }
+}
+@keyframes robotBubbleIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
