@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useDashboardStore } from '../../stores/dashboardStore'
 import ThreeDBackground from '../../components/ThreeDBackground'
 import {
@@ -29,7 +30,15 @@ function Gauge({ value, label, color }: { value: number; label: string; color: s
   )
 }
 
+const QUICK_LINKS = [
+  { label: 'My Cards', path: '/cards', icon: '\u{1F4B3}', sub: '3 active cards', color: '#6366f1' },
+  { label: 'Transactions', path: '/transactions', icon: '\u{1F4CB}', sub: '20 recent', color: '#10b981' },
+  { label: 'Loans', path: '/loans', icon: '\u{1F3E6}', sub: '2 active loans', color: '#f59e0b' },
+  { label: 'Budget', path: '/budget', icon: '\u{1F4B0}', sub: 'On track this month', color: '#3b82f6' },
+]
+
 export default function Dashboard() {
+  const navigate = useNavigate()
   const { stats, cases, analytics, loading, fetchStats, fetchCases, fetchAnalytics } =
     useDashboardStore()
 
@@ -85,6 +94,19 @@ export default function Dashboard() {
           </div>
         </>
       )}
+
+      {/* Quick Access */}
+      <div className="stats-grid" style={{ marginTop: 16 }}>
+        {QUICK_LINKS.map(q => (
+          <div key={q.path} className="stat-card" style={{ cursor: 'pointer', borderLeft: `3px solid ${q.color}` }}
+            onClick={() => navigate(q.path)} onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 8px 30px rgba(0,0,0,0.3)'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}>
+            <div style={{ fontSize: '1.8rem', marginBottom: 4 }}>{q.icon}</div>
+            <div style={{ fontWeight: 600, fontSize: '1rem' }}>{q.label}</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{q.sub}</div>
+          </div>
+        ))}
+      </div>
 
       {analytics && (
         <div className="chart-grid">

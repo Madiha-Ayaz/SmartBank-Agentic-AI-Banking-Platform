@@ -14,6 +14,9 @@ const ChatPage = lazy(() => import('./features/chat/ChatPage'))
 const Document = lazy(() => import('./features/document/Document'))
 const Workflows = lazy(() => import('./features/workflows/Workflows'))
 const ARIEPage = lazy(() => import('./features/arie/ARIE'))
+const CardsPage = lazy(() => import('./features/cards/CardsPage'))
+const TransactionsPage = lazy(() => import('./features/transactions/TransactionsPage'))
+const LoanPage = lazy(() => import('./features/loans/LoanPage'))
 const GoalsPage = lazy(() => import('./features/goals/GoalsPage'))
 const BudgetPage = lazy(() => import('./features/budget/BudgetPage'))
 const FeatureGuide = lazy(() => import('./features/guide/FeatureGuide'))
@@ -40,6 +43,9 @@ export default function App() {
           <Route path="/workflows" element={<Workflows />} />
           <Route path="/goals" element={<GoalsPage />} />
           <Route path="/budget" element={<BudgetPage />} />
+          <Route path="/cards" element={<CardsPage />} />
+          <Route path="/transactions" element={<TransactionsPage />} />
+          <Route path="/loans" element={<LoanPage />} />
           <Route path="/guide" element={<FeatureGuide />} />
           <Route path="/admin/*" element={<AdminRoute><AdminLayout /></AdminRoute>} />
         </Route>
