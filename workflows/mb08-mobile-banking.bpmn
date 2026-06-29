@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_Mb08MobileBanking" targetNamespace="http://smartbank.ai/bpmn" exporter="SmartBank Maestro Designer" exporterVersion="1.0">
+  <bpmn:process id="Mb08MobileBanking" name="Mobile Banking Activation" isExecutable="true" processType="Private">
+    <bpmn:extensions>
+      <bpmn:property id="namespace" value="http://smartbank.ai/mobile" />
+      <bpmn:property id="version" value="1.0.0" />
+      <bpmn:property id="riskLevel" value="Medium" />
+      <bpmn:property id="requiresApproval" value="false" />
+      <bpmn:property id="requiresOTP" value="true" />
+      <bpmn:property id="description" value="Activates mobile banking for customer. Medium-risk process requiring OTP verification." />
+    </bpmn:extensions>
+
+    <bpmn:property id="caseId" name="caseId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="customerId" name="customerId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="requestPayload" name="requestPayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="responsePayload" name="responsePayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="mobileNumber" name="mobileNumber" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="deviceId" name="deviceId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="otpCode" name="otpCode" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="otpStatus" name="otpStatus" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="activationStatus" name="activationStatus" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="errorCode" name="errorCode" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="retryCount" name="retryCount" itemSubjectRef="ItemDef_Int" />
+
+    <bpmn:itemDefinition id="ItemDef_String" structureRef="xsd:string" />
+    <bpmn:itemDefinition id="ItemDef_Int" structureRef="xsd:int" />
+
+    <bpmn:startEvent id="StartEvent_MB08" name="Mobile Activation Request">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="signal" />
+        <bpmn:property id="signalName" value="SmartBank.MB08.Activate" />
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+
+    <!-- Service Task 1: Send OTP -->
+    <bpmn:serviceTask id="ServiceTask_SendOTP" name="Send OTP" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/otp/send" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="15000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="OTP Service" />
+        <bpmn:property id="inputs" value="customerId, mobileNumber" />
+        <bpmn:property id="outputs" value="otpStatus" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_SendOTP" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_MB08_OTP">
+        <bpmn:targetRef>DataInput_SendOTP</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId, mobileNumber}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_SendOTP</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_MB08_OTP">
+        <bpmn:sourceRef>DataOutput_SendOTP</bpmn:sourceRef>
+        <bpmn:targetRef>otpStatus</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_SendOTP</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">otpStatus</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_MB08_SendOTP" attachedToRef="ServiceTask_SendOTP">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_MB08_SendOTP" errorRef="Error_SendOTP" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_MB08_SendOTP" attachedToRef="ServiceTask_SendOTP">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_MB08_SendOTP">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT30S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: OTP Sent? -->
+    <bpmn:exclusiveGateway id="Gateway_OTPSent" name="OTP Sent?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_MB08_Start_To_OTP" name="" sourceRef="StartEvent_MB08" targetRef="ServiceTask_SendOTP" />
+    <bpmn:sequenceFlow id="Flow_MB08_OTP_To_Gateway" name="" sourceRef="ServiceTask_SendOTP" targetRef="Gateway_OTPSent" />
+
+    <!-- User Task: Verify OTP -->
+    <bpmn:sequenceFlow id="Flow_MB08_OTPSent" name="OTP Sent" sourceRef="Gateway_OTPSent" targetRef="UserTask_VerifyOTP">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">otpStatus = "Sent"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:userTask id="UserTask_VerifyOTP" name="Verify OTP" implementation="UiPath.Persona.Customer">
+      <bpmn:extensionElements>
+        <bpmn:property id="taskQueue" value="SmartBank.OTPVerification" />
+        <bpmn:property id="priority" value="Normal" />
+        <bpmn:property id="slaTimeout" value="PT1H" />
+        <bpmn:property id="escalationAfter" value="PT15M" />
+        <bpmn:property id="formType" value="SmartBank.OTPForm.v1" />
+        <bpmn:property id="performer" value="Customer" />
+        <bpmn:property id="inputs" value="mobileNumber, otpCode" />
+        <bpmn:property id="outputs" value="otpStatus" />
+        <bpmn:property id="otpMaxAttempts" value="3" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_VerifyOTP" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_MB08_VerifyOTP">
+        <bpmn:targetRef>DataInput_VerifyOTP</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{mobileNumber, otpCode}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_VerifyOTP</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_MB08_VerifyOTP">
+        <bpmn:sourceRef>DataOutput_VerifyOTP</bpmn:sourceRef>
+        <bpmn:targetRef>otpStatus</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_VerifyOTP</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">otpStatus</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:userTask>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_MB08_VerifyOTP" attachedToRef="UserTask_VerifyOTP">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_MB08_VerifyOTP">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: OTP Valid? -->
+    <bpmn:exclusiveGateway id="Gateway_OTPValid" name="OTP Valid?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_MB08_Verify_To_Gateway" name="" sourceRef="UserTask_VerifyOTP" targetRef="Gateway_OTPValid" />
+
+    <!-- Service Task 2: Activate Mobile Banking -->
+    <bpmn:sequenceFlow id="Flow_MB08_OTPValid" name="OTP Valid" sourceRef="Gateway_OTPValid" targetRef="ServiceTask_ActivateMobile">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">otpStatus = "Verified"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_ActivateMobile" name="Activate Mobile Banking" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/mobile/activate" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="30000" />
+        <bpmn:property id="slaTimeout" value="PT1M" />
+        <bpmn:property id="performer" value="Mobile Banking Service" />
+        <bpmn:property id="inputs" value="customerId, mobileNumber, deviceId" />
+        <bpmn:property id="outputs" value="activationStatus, responsePayload" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_ActivateMobile" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_MB08_Activate">
+        <bpmn:targetRef>DataInput_ActivateMobile</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId, mobileNumber, deviceId}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_ActivateMobile</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_MB08_Activate">
+        <bpmn:sourceRef>DataOutput_ActivateMobile</bpmn:sourceRef>
+        <bpmn:targetRef>responsePayload</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_ActivateMobile</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">responsePayload</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_MB08_Activate" attachedToRef="ServiceTask_ActivateMobile">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_MB08_Activate" errorRef="Error_Activation" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_MB08_Activate" attachedToRef="ServiceTask_ActivateMobile">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_MB08_Activate">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Activated? -->
+    <bpmn:exclusiveGateway id="Gateway_Activated" name="Activated?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_MB08_Activate_To_Gateway" name="" sourceRef="ServiceTask_ActivateMobile" targetRef="Gateway_Activated" />
+
+    <bpmn:sequenceFlow id="Flow_MB08_Success" name="Activated" sourceRef="Gateway_Activated" targetRef="EndEvent_MB08_Success">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">activationStatus = "Activated" OrElse IsNothing(errorCode)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_MB08_Success" name="Mobile Activated">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.MB08.Activated" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- Failure Paths -->
+    <bpmn:sequenceFlow id="Flow_MB08_OTPFailed" name="OTP Failed" sourceRef="Gateway_OTPSent" targetRef="EndEvent_MB08_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">otpStatus = "Failed"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_MB08_OTPInvalid" name="Invalid OTP" sourceRef="Gateway_OTPValid" targetRef="EndEvent_MB08_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">otpStatus = "Invalid" OrElse otpStatus = "Expired"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_MB08_ActivationFailed" name="Failed" sourceRef="Gateway_Activated" targetRef="EndEvent_MB08_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">Not IsNothing(errorCode)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_MB08_Failed" name="Mobile Activation Failed">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.MB08.Failed" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_MB08_Error_SendOTP" name="OTP Error" sourceRef="BoundaryError_MB08_SendOTP" targetRef="EndEvent_MB08_Failed" />
+    <bpmn:sequenceFlow id="Flow_MB08_Timer_SendOTP" name="OTP SLA" sourceRef="BoundaryTimer_MB08_SendOTP" targetRef="EndEvent_MB08_Failed" />
+    <bpmn:sequenceFlow id="Flow_MB08_Timer_VerifyOTP" name="Verify SLA" sourceRef="BoundaryTimer_MB08_VerifyOTP" targetRef="EndEvent_MB08_Failed" />
+    <bpmn:sequenceFlow id="Flow_MB08_Error_Activate" name="Activation Error" sourceRef="BoundaryError_MB08_Activate" targetRef="EndEvent_MB08_Failed" />
+    <bpmn:sequenceFlow id="Flow_MB08_Timer_Activate" name="Activation SLA" sourceRef="BoundaryTimer_MB08_Activate" targetRef="EndEvent_MB08_Failed" />
+
+    <bpmn:error id="Error_SendOTP" name="SendOTPError" errorCode="ERR_SEND_OTP" />
+    <bpmn:error id="Error_Activation" name="MobileActivationError" errorCode="ERR_MOBILE_ACTIVATION" />
+  </bpmn:process>
+
+  <bpmn:interface id="Interface_MB08" name="Mobile Banking API Interface">
+    <bpmn:operation id="Operation_SendOTP" name="SendOTP" implementationRef="SmartBank.API.SendOTP">
+      <bpmn:inMessageRef>Message_SendOTPRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_SendOTPResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_VerifyOTP" name="VerifyOTP" implementationRef="SmartBank.UI.OTPForm">
+      <bpmn:inMessageRef>Message_VerifyOTPRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_VerifyOTPResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_ActivateMobile" name="ActivateMobile" implementationRef="SmartBank.API.ActivateMobile">
+      <bpmn:inMessageRef>Message_ActivateMobileRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_ActivateMobileResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+  </bpmn:interface>
+
+  <bpmn:message id="Message_SendOTPRequest" name="SmartBank.SendOTPRequest.v1" />
+  <bpmn:message id="Message_SendOTPResponse" name="SmartBank.SendOTPResponse.v1" />
+  <bpmn:message id="Message_VerifyOTPRequest" name="SmartBank.OTPVerificationRequest.v1" />
+  <bpmn:message id="Message_VerifyOTPResponse" name="SmartBank.OTPVerificationResponse.v1" />
+  <bpmn:message id="Message_ActivateMobileRequest" name="SmartBank.ActivateMobileRequest.v1" />
+  <bpmn:message id="Message_ActivateMobileResponse" name="SmartBank.ActivateMobileResponse.v1" />
+
+  <bpmn:dataInput id="DataInput_SendOTP" name="SendOTPInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_SendOTP" name="SendOTPOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_VerifyOTP" name="VerifyOTPInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_VerifyOTP" name="VerifyOTPOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_ActivateMobile" name="ActivateMobileInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_ActivateMobile" name="ActivateMobileOutput" itemSubjectRef="ItemDef_String" />
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_MB08" name="Mobile Banking Activation Diagram">
+    <bpmndi:BPMNPlane id="BPMNPlane_MB08" bpmnElement="Mb08MobileBanking">
+      <bpmndi:BPMNShape id="Shape_MB08_Start" bpmnElement="StartEvent_MB08">
+        <dc:Bounds x="50" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_MB08_SendOTP" bpmnElement="ServiceTask_SendOTP">
+        <dc:Bounds x="160" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_MB08_Gateway_OTPSent" bpmnElement="Gateway_OTPSent">
+        <dc:Bounds x="350" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_MB08_VerifyOTP" bpmnElement="UserTask_VerifyOTP">
+        <dc:Bounds x="470" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_MB08_Gateway_OTPValid" bpmnElement="Gateway_OTPValid">
+        <dc:Bounds x="660" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_MB08_Activate" bpmnElement="ServiceTask_ActivateMobile">
+        <dc:Bounds x="780" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_MB08_Gateway_Activated" bpmnElement="Gateway_Activated">
+        <dc:Bounds x="970" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_MB08_End_Success" bpmnElement="EndEvent_MB08_Success">
+        <dc:Bounds x="1100" y="150" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_MB08_End_Failed" bpmnElement="EndEvent_MB08_Failed">
+        <dc:Bounds x="1100" y="270" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_MB08_Error_SendOTP" bpmnElement="BoundaryError_MB08_SendOTP">
+        <dc:Bounds x="180" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_MB08_Timer_SendOTP" bpmnElement="BoundaryTimer_MB08_SendOTP">
+        <dc:Bounds x="224" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_MB08_Timer_VerifyOTP" bpmnElement="BoundaryTimer_MB08_VerifyOTP">
+        <dc:Bounds x="512" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_MB08_Error_Activate" bpmnElement="BoundaryError_MB08_Activate">
+        <dc:Bounds x="800" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_MB08_Timer_Activate" bpmnElement="BoundaryTimer_MB08_Activate">
+        <dc:Bounds x="844" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Edge_MB08_Start_To_OTP" bpmnElement="Flow_MB08_Start_To_OTP">
+        <di:waypoint x="86" y="218" />
+        <di:waypoint x="160" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_OTP_To_Gateway" bpmnElement="Flow_MB08_OTP_To_Gateway">
+        <di:waypoint x="280" y="218" />
+        <di:waypoint x="350" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_OTPSent" bpmnElement="Flow_MB08_OTPSent">
+        <di:waypoint x="400" y="213" />
+        <di:waypoint x="470" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_Verify_To_Gateway" bpmnElement="Flow_MB08_Verify_To_Gateway">
+        <di:waypoint x="590" y="218" />
+        <di:waypoint x="660" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_OTPValid" bpmnElement="Flow_MB08_OTPValid">
+        <di:waypoint x="710" y="213" />
+        <di:waypoint x="780" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_Activate_To_Gateway" bpmnElement="Flow_MB08_Activate_To_Gateway">
+        <di:waypoint x="900" y="218" />
+        <di:waypoint x="970" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_Success" bpmnElement="Flow_MB08_Success">
+        <di:waypoint x="1020" y="213" />
+        <di:waypoint x="1100" y="168" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_OTPFailed" bpmnElement="Flow_MB08_OTPFailed">
+        <di:waypoint x="375" y="238" />
+        <di:waypoint x="375" y="330" />
+        <di:waypoint x="1118" y="330" />
+        <di:waypoint x="1118" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_OTPInvalid" bpmnElement="Flow_MB08_OTPInvalid">
+        <di:waypoint x="685" y="238" />
+        <di:waypoint x="685" y="330" />
+        <di:waypoint x="1118" y="330" />
+        <di:waypoint x="1118" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_ActivationFailed" bpmnElement="Flow_MB08_ActivationFailed">
+        <di:waypoint x="995" y="238" />
+        <di:waypoint x="995" y="330" />
+        <di:waypoint x="1118" y="330" />
+        <di:waypoint x="1118" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_Error_SendOTP" bpmnElement="Flow_MB08_Error_SendOTP">
+        <di:waypoint x="198" y="294" />
+        <di:waypoint x="198" y="380" />
+        <di:waypoint x="1118" y="380" />
+        <di:waypoint x="1118" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_Timer_SendOTP" bpmnElement="Flow_MB08_Timer_SendOTP">
+        <di:waypoint x="242" y="294" />
+        <di:waypoint x="242" y="400" />
+        <di:waypoint x="1118" y="400" />
+        <di:waypoint x="1118" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_Timer_VerifyOTP" bpmnElement="Flow_MB08_Timer_VerifyOTP">
+        <di:waypoint x="530" y="258" />
+        <di:waypoint x="530" y="360" />
+        <di:waypoint x="1118" y="360" />
+        <di:waypoint x="1118" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_Error_Activate" bpmnElement="Flow_MB08_Error_Activate">
+        <di:waypoint x="818" y="294" />
+        <di:waypoint x="818" y="380" />
+        <di:waypoint x="1118" y="380" />
+        <di:waypoint x="1118" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_Timer_Activate" bpmnElement="Flow_MB08_Timer_Activate">
+        <di:waypoint x="862" y="294" />
+        <di:waypoint x="862" y="400" />
+        <di:waypoint x="1118" y="400" />
+        <di:waypoint x="1118" y="306" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

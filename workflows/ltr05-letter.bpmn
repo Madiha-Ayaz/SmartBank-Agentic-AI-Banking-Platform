@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_Ltr05Letter" targetNamespace="http://smartbank.ai/bpmn" exporter="SmartBank Maestro Designer" exporterVersion="1.0">
+  <bpmn:process id="Ltr05Letter" name="Account Opening Letter" isExecutable="true" processType="Private">
+    <bpmn:extensions>
+      <bpmn:property id="namespace" value="http://smartbank.ai/letter" />
+      <bpmn:property id="version" value="1.0.0" />
+      <bpmn:property id="riskLevel" value="Low" />
+      <bpmn:property id="requiresApproval" value="false" />
+      <bpmn:property id="description" value="Generates account opening letter for new customers. Low-risk automated process." />
+    </bpmn:extensions>
+
+    <bpmn:property id="caseId" name="caseId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="customerId" name="customerId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="requestPayload" name="requestPayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="responsePayload" name="responsePayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="customerName" name="customerName" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="accountNumber" name="accountNumber" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="letterTemplate" name="letterTemplate" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="letterUrl" name="letterUrl" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="errorCode" name="errorCode" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="retryCount" name="retryCount" itemSubjectRef="ItemDef_Int" />
+
+    <bpmn:itemDefinition id="ItemDef_String" structureRef="xsd:string" />
+    <bpmn:itemDefinition id="ItemDef_Int" structureRef="xsd:int" />
+
+    <bpmn:startEvent id="StartEvent_LTR05" name="Letter Request">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="signal" />
+        <bpmn:property id="signalName" value="SmartBank.LTR05.Generate" />
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+
+    <!-- Service Task 1: Fetch Customer Details -->
+    <bpmn:serviceTask id="ServiceTask_FetchDetails" name="Fetch Customer Details" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/customer/details" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="15000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="Customer Service" />
+        <bpmn:property id="inputs" value="customerId" />
+        <bpmn:property id="outputs" value="customerName, accountNumber" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_FetchDetails" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_LTR05_Details">
+        <bpmn:targetRef>DataInput_FetchDetails</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_FetchDetails</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_LTR05_Details">
+        <bpmn:sourceRef>DataOutput_FetchDetails</bpmn:sourceRef>
+        <bpmn:targetRef>customerName</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_FetchDetails</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">customerName</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_LTR05_Details" attachedToRef="ServiceTask_FetchDetails">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_LTR05_Details" errorRef="Error_FetchDetails" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_LTR05_Details" attachedToRef="ServiceTask_FetchDetails">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_LTR05_Details">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT30S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Details Found? -->
+    <bpmn:exclusiveGateway id="Gateway_DetailsFound" name="Details Found?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_LTR05_Start_To_Details" name="" sourceRef="StartEvent_LTR05" targetRef="ServiceTask_FetchDetails" />
+    <bpmn:sequenceFlow id="Flow_LTR05_Details_To_Gateway" name="" sourceRef="ServiceTask_FetchDetails" targetRef="Gateway_DetailsFound" />
+
+    <!-- Service Task 2: Generate Letter -->
+    <bpmn:sequenceFlow id="Flow_LTR05_HasDetails" name="Has Details" sourceRef="Gateway_DetailsFound" targetRef="ServiceTask_GenerateLetter">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath"><![CDATA[customerName <> Nothing AndAlso accountNumber <> Nothing]]></bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_GenerateLetter" name="Generate Letter" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/document/letter" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="30000" />
+        <bpmn:property id="slaTimeout" value="PT1M" />
+        <bpmn:property id="performer" value="Document Generation Service" />
+        <bpmn:property id="inputs" value="customerName, accountNumber, letterTemplate" />
+        <bpmn:property id="outputs" value="letterUrl" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_GenerateLetter" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_LTR05_Letter">
+        <bpmn:targetRef>DataInput_GenerateLetter</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerName, accountNumber, letterTemplate}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_GenerateLetter</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_LTR05_Letter">
+        <bpmn:sourceRef>DataOutput_GenerateLetter</bpmn:sourceRef>
+        <bpmn:targetRef>letterUrl</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_GenerateLetter</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">letterUrl</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_LTR05_Letter" attachedToRef="ServiceTask_GenerateLetter">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_LTR05_Letter" errorRef="Error_LetterGeneration" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_LTR05_Letter" attachedToRef="ServiceTask_GenerateLetter">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_LTR05_Letter">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Letter Generated? -->
+    <bpmn:exclusiveGateway id="Gateway_LetterSuccess" name="Generated?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_LTR05_Letter_To_Gateway" name="" sourceRef="ServiceTask_GenerateLetter" targetRef="Gateway_LetterSuccess" />
+
+    <bpmn:sequenceFlow id="Flow_LTR05_Success" name="Success" sourceRef="Gateway_LetterSuccess" targetRef="EndEvent_LTR05_Success">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath"><![CDATA[letterUrl <> Nothing AndAlso IsNothing(errorCode)]]></bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_LTR05_Success" name="Letter Generated">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.LTR05.Generated" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- Failure Paths -->
+    <bpmn:sequenceFlow id="Flow_LTR05_NoDetails" name="No Details" sourceRef="Gateway_DetailsFound" targetRef="EndEvent_LTR05_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath"><![CDATA[customerName Is Nothing OrElse accountNumber Is Nothing]]></bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_LTR05_LetterFailed" name="Failed" sourceRef="Gateway_LetterSuccess" targetRef="EndEvent_LTR05_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">Not IsNothing(errorCode)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_LTR05_Failed" name="Letter Failed">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.LTR05.Failed" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_LTR05_Error_Details" name="Details Error" sourceRef="BoundaryError_LTR05_Details" targetRef="EndEvent_LTR05_Failed" />
+    <bpmn:sequenceFlow id="Flow_LTR05_Timer_Details" name="Details SLA" sourceRef="BoundaryTimer_LTR05_Details" targetRef="EndEvent_LTR05_Failed" />
+    <bpmn:sequenceFlow id="Flow_LTR05_Error_Letter" name="Letter Error" sourceRef="BoundaryError_LTR05_Letter" targetRef="EndEvent_LTR05_Failed" />
+    <bpmn:sequenceFlow id="Flow_LTR05_Timer_Letter" name="Letter SLA" sourceRef="BoundaryTimer_LTR05_Letter" targetRef="EndEvent_LTR05_Failed" />
+
+    <bpmn:error id="Error_FetchDetails" name="FetchDetailsError" errorCode="ERR_FETCH_DETAILS" />
+    <bpmn:error id="Error_LetterGeneration" name="LetterGenerationError" errorCode="ERR_LETTER_GENERATION" />
+  </bpmn:process>
+
+  <bpmn:interface id="Interface_LTR05" name="Letter API Interface">
+    <bpmn:operation id="Operation_FetchDetails" name="FetchDetails" implementationRef="SmartBank.API.FetchDetails">
+      <bpmn:inMessageRef>Message_FetchDetailsRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_FetchDetailsResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_GenerateLetter" name="GenerateLetter" implementationRef="SmartBank.API.GenerateLetter">
+      <bpmn:inMessageRef>Message_GenerateLetterRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_GenerateLetterResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+  </bpmn:interface>
+
+  <bpmn:message id="Message_FetchDetailsRequest" name="SmartBank.FetchDetailsRequest.v1" />
+  <bpmn:message id="Message_FetchDetailsResponse" name="SmartBank.FetchDetailsResponse.v1" />
+  <bpmn:message id="Message_GenerateLetterRequest" name="SmartBank.GenerateLetterRequest.v1" />
+  <bpmn:message id="Message_GenerateLetterResponse" name="SmartBank.GenerateLetterResponse.v1" />
+
+  <bpmn:dataInput id="DataInput_FetchDetails" name="FetchDetailsInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_FetchDetails" name="FetchDetailsOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_GenerateLetter" name="GenerateLetterInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_GenerateLetter" name="GenerateLetterOutput" itemSubjectRef="ItemDef_String" />
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_LTR05" name="Account Opening Letter Diagram">
+    <bpmndi:BPMNPlane id="BPMNPlane_LTR05" bpmnElement="Ltr05Letter">
+      <bpmndi:BPMNShape id="Shape_LTR05_Start" bpmnElement="StartEvent_LTR05">
+        <dc:Bounds x="50" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LTR05_Details" bpmnElement="ServiceTask_FetchDetails">
+        <dc:Bounds x="160" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LTR05_Gateway_Details" bpmnElement="Gateway_DetailsFound">
+        <dc:Bounds x="350" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LTR05_Letter" bpmnElement="ServiceTask_GenerateLetter">
+        <dc:Bounds x="470" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LTR05_Gateway_Success" bpmnElement="Gateway_LetterSuccess">
+        <dc:Bounds x="660" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LTR05_End_Success" bpmnElement="EndEvent_LTR05_Success">
+        <dc:Bounds x="790" y="150" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LTR05_End_Failed" bpmnElement="EndEvent_LTR05_Failed">
+        <dc:Bounds x="790" y="260" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_LTR05_Error_Details" bpmnElement="BoundaryError_LTR05_Details">
+        <dc:Bounds x="180" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LTR05_Timer_Details" bpmnElement="BoundaryTimer_LTR05_Details">
+        <dc:Bounds x="224" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LTR05_Error_Letter" bpmnElement="BoundaryError_LTR05_Letter">
+        <dc:Bounds x="490" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_LTR05_Timer_Letter" bpmnElement="BoundaryTimer_LTR05_Letter">
+        <dc:Bounds x="534" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Edge_LTR05_Start_To_Details" bpmnElement="Flow_LTR05_Start_To_Details">
+        <di:waypoint x="86" y="218" />
+        <di:waypoint x="160" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_LTR05_Details_To_Gateway" bpmnElement="Flow_LTR05_Details_To_Gateway">
+        <di:waypoint x="280" y="218" />
+        <di:waypoint x="350" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_LTR05_HasDetails" bpmnElement="Flow_LTR05_HasDetails">
+        <di:waypoint x="400" y="213" />
+        <di:waypoint x="470" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_LTR05_Letter_To_Gateway" bpmnElement="Flow_LTR05_Letter_To_Gateway">
+        <di:waypoint x="590" y="218" />
+        <di:waypoint x="660" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_LTR05_Success" bpmnElement="Flow_LTR05_Success">
+        <di:waypoint x="710" y="213" />
+        <di:waypoint x="790" y="168" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_LTR05_NoDetails" bpmnElement="Flow_LTR05_NoDetails">
+        <di:waypoint x="375" y="238" />
+        <di:waypoint x="375" y="310" />
+        <di:waypoint x="808" y="310" />
+        <di:waypoint x="808" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_LTR05_LetterFailed" bpmnElement="Flow_LTR05_LetterFailed">
+        <di:waypoint x="685" y="238" />
+        <di:waypoint x="685" y="310" />
+        <di:waypoint x="808" y="310" />
+        <di:waypoint x="808" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_LTR05_Error_Details" bpmnElement="Flow_LTR05_Error_Details">
+        <di:waypoint x="198" y="294" />
+        <di:waypoint x="198" y="360" />
+        <di:waypoint x="808" y="360" />
+        <di:waypoint x="808" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_LTR05_Timer_Details" bpmnElement="Flow_LTR05_Timer_Details">
+        <di:waypoint x="242" y="294" />
+        <di:waypoint x="242" y="380" />
+        <di:waypoint x="808" y="380" />
+        <di:waypoint x="808" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_LTR05_Error_Letter" bpmnElement="Flow_LTR05_Error_Letter">
+        <di:waypoint x="508" y="294" />
+        <di:waypoint x="508" y="360" />
+        <di:waypoint x="808" y="360" />
+        <di:waypoint x="808" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_LTR05_Timer_Letter" bpmnElement="Flow_LTR05_Timer_Letter">
+        <di:waypoint x="552" y="294" />
+        <di:waypoint x="552" y="380" />
+        <di:waypoint x="808" y="380" />
+        <di:waypoint x="808" y="296" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

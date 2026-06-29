@@ -1,0 +1,478 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_BankingWorkflow" targetNamespace="http://smartbank.ai/bpmn" exporter="SmartBank Maestro Designer" exporterVersion="1.0">
+  <bpmn:process id="BankingWorkflow" name="SmartFinance AI — Banking Verification &amp; Payment Workflow" isExecutable="true" processType="Private">
+    <bpmn:extensions>
+      <bpmn:property id="namespace" value="http://smartbank.ai/banking" />
+      <bpmn:property id="version" value="1.0.0" />
+      <bpmn:property id="riskLevel" value="Medium" />
+      <bpmn:property id="requiresApproval" value="true" />
+      <bpmn:property id="description" value="End-to-end banking workflow: CNIC verification via NADRA, account check via CBS, risk-based decision gateway, human approval, payment via 1LINK, instant transfer via Raast, and Firebase audit logging." />
+    </bpmn:extensions>
+
+    <!-- Process Variables -->
+    <bpmn:property id="caseId" name="caseId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="customerId" name="customerId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="requestPayload" name="requestPayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="responsePayload" name="responsePayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="cnic" name="cnic" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="cnicVerified" name="cnicVerified" itemSubjectRef="ItemDef_Boolean" />
+    <bpmn:property id="customerName" name="customerName" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="accountNumber" name="accountNumber" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="accountStatus" name="accountStatus" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="availableBalance" name="availableBalance" itemSubjectRef="ItemDef_Double" />
+    <bpmn:property id="paymentAmount" name="paymentAmount" itemSubjectRef="ItemDef_Double" />
+    <bpmn:property id="riskScore" name="riskScore" itemSubjectRef="ItemDef_Double" />
+    <bpmn:property id="requiresHumanApproval" name="requiresHumanApproval" itemSubjectRef="ItemDef_Boolean" />
+    <bpmn:property id="humanDecision" name="humanDecision" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="transactionId" name="transactionId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="referenceId" name="referenceId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="firebaseSaved" name="firebaseSaved" itemSubjectRef="ItemDef_Boolean" />
+    <bpmn:property id="errorCode" name="errorCode" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="slaDeadline" name="slaDeadline" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="retryCount" name="retryCount" itemSubjectRef="ItemDef_Int" />
+
+    <bpmn:itemDefinition id="ItemDef_String" structureRef="xsd:string" />
+    <bpmn:itemDefinition id="ItemDef_Double" structureRef="xsd:double" />
+    <bpmn:itemDefinition id="ItemDef_Int" structureRef="xsd:int" />
+    <bpmn:itemDefinition id="ItemDef_Boolean" structureRef="xsd:boolean" />
+
+    <!-- == START EVENT == -->
+    <bpmn:startEvent id="StartEvent_BankingRequest" name="Banking Request Received">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="signal" />
+        <bpmn:property id="signalName" value="SmartBank.BNK99.Start" />
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+
+    <!-- == SERVICE TASK 1: NADRA CNIC Verification == -->
+    <bpmn:serviceTask id="ServiceTask_NADRAVerify" name="NADRA CNIC Verification" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="http://localhost:8000/api/nadra/verify" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="15000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="NADRA Verification Service" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_NADRAVerify" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_NADRA">
+        <bpmn:targetRef>DataInput_NADRARequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{cnic}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_NADRARequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_NADRA">
+        <bpmn:sourceRef>DataOutput_NADRAResponse</bpmn:sourceRef>
+        <bpmn:targetRef>cnicVerified</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_NADRAResponse.verified</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">cnicVerified</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <!-- Error Boundary Event on NADRA -->
+    <bpmn:boundaryEvent id="BoundaryError_NADRA" attachedToRef="ServiceTask_NADRAVerify">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_NADRA" errorRef="Error_NADRA" />
+    </bpmn:boundaryEvent>
+
+    <!-- == SERVICE TASK 2: CBS Account Verification == -->
+    <bpmn:serviceTask id="ServiceTask_CBSAccountCheck" name="CBS Account Verification" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="http://localhost:8000/api/cbs/account-check" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="15000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="CBS Core Banking Service" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_CBSCheck" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_CBS">
+        <bpmn:targetRef>DataInput_CBSRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{accountNumber}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_CBSRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_CBS">
+        <bpmn:sourceRef>DataOutput_CBSResponse</bpmn:sourceRef>
+        <bpmn:targetRef>accountStatus</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_CBSResponse.accountStatus</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">accountStatus</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_CBS_Balance">
+        <bpmn:sourceRef>DataOutput_CBSResponse</bpmn:sourceRef>
+        <bpmn:targetRef>availableBalance</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_CBSResponse.availableBalance</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">availableBalance</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <!-- Error Boundary Event on CBS -->
+    <bpmn:boundaryEvent id="BoundaryError_CBS" attachedToRef="ServiceTask_CBSAccountCheck">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_CBS" errorRef="Error_CBS" />
+    </bpmn:boundaryEvent>
+
+    <!-- == DECISION GATEWAY: Risk Assessment == -->
+    <bpmn:exclusiveGateway id="Gateway_RiskDecision" name="Risk Assessment" gatewayDirection="Diverging">
+      <bpmn:extensionElements>
+        <bpmn:property id="routingField" value="riskScore" />
+      </bpmn:extensionElements>
+    </bpmn:exclusiveGateway>
+
+    <!-- == HUMAN APPROVAL USER TASK == -->
+    <bpmn:userTask id="UserTask_HumanApproval" name="Banking Officer Approval" implementation="UiPath.Persona.Agent">
+      <bpmn:extensionElements>
+        <bpmn:property id="taskQueue" value="SmartBank.BankingApproval" />
+        <bpmn:property id="priority" value="High" />
+        <bpmn:property id="slaTimeout" value="PT1H" />
+        <bpmn:property id="escalationAfter" value="PT30M" />
+        <bpmn:property id="formType" value="SmartBank.BankingApprovalForm.v1" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_BankingApproval" />
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_Approval">
+        <bpmn:sourceRef>DataOutput_ApprovalResponse</bpmn:sourceRef>
+        <bpmn:targetRef>humanDecision</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_ApprovalResponse</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">humanDecision</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:userTask>
+
+    <!-- Timer Boundary Event for Human Approval SLA -->
+    <bpmn:boundaryEvent id="BoundaryTimer_Approval" attachedToRef="UserTask_HumanApproval">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_Approval">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- == HUMAN DECISION GATEWAY == -->
+    <bpmn:exclusiveGateway id="Gateway_HumanDecision" name="Human Decision" gatewayDirection="Diverging" />
+
+    <!-- == SERVICE TASK 3: 1LINK Payment Processing == -->
+    <bpmn:serviceTask id="ServiceTask_1LINKPayment" name="1LINK Payment Processing" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="http://localhost:8000/api/onelink/payment" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="15000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="1LINK Payment Gateway" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_1LINKPayment" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_1LINK">
+        <bpmn:targetRef>DataInput_1LINKRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{accountNumber, paymentAmount}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_1LINKRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_1LINK">
+        <bpmn:sourceRef>DataOutput_1LINKResponse</bpmn:sourceRef>
+        <bpmn:targetRef>transactionId</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_1LINKResponse.transactionId</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">transactionId</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <!-- == SERVICE TASK 4: Raast Instant Transfer == -->
+    <bpmn:serviceTask id="ServiceTask_RaastTransfer" name="Raast Instant Transfer" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="http://localhost:8000/api/raast/transfer" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="15000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="Raast Instant Payment Service" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_RaastTransfer" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_Raast">
+        <bpmn:targetRef>DataInput_RaastRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{accountNumber, paymentAmount}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_RaastRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_Raast">
+        <bpmn:sourceRef>DataOutput_RaastResponse</bpmn:sourceRef>
+        <bpmn:targetRef>referenceId</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_RaastResponse.referenceId</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">referenceId</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <!-- == SERVICE TASK 5: Firebase Audit Logging == -->
+    <bpmn:serviceTask id="ServiceTask_FirebaseLog" name="Save to Firebase Firestore" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="http://localhost:8000/api/banking/log" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="timeout" value="10000" />
+        <bpmn:property id="slaTimeout" value="PT15S" />
+        <bpmn:property id="performer" value="Firebase Audit Logger" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_FirebaseLog" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_Firebase">
+        <bpmn:targetRef>DataInput_FirebaseRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{caseId, cnic, customerName, accountNumber, transactionId, referenceId, paymentAmount, cnicVerified, accountStatus}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_FirebaseRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+    </bpmn:serviceTask>
+
+    <!-- == END SUCCESS == -->
+    <bpmn:endEvent id="EndEvent_BankingSuccess" name="Banking Workflow Completed">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="signal" />
+        <bpmn:property id="signalName" value="SmartBank.BNK99.Completed" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- == END REJECTED == -->
+    <bpmn:endEvent id="EndEvent_BankingRejected" name="Rejected by Officer">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="signal" />
+        <bpmn:property id="signalName" value="SmartBank.BNK99.Rejected" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- == END FAILED (Error) == -->
+    <bpmn:endEvent id="EndEvent_BankingError" name="Error">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="error" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- Sequence Flows -->
+    <bpmn:sequenceFlow id="Flow_Start_To_NADRA" name="" sourceRef="StartEvent_BankingRequest" targetRef="ServiceTask_NADRAVerify" />
+    <bpmn:sequenceFlow id="Flow_NADRA_To_CBS" name="CNIC Verified" sourceRef="ServiceTask_NADRAVerify" targetRef="ServiceTask_CBSAccountCheck" />
+    <bpmn:sequenceFlow id="Flow_CBS_To_Gateway" name="" sourceRef="ServiceTask_CBSAccountCheck" targetRef="Gateway_RiskDecision" />
+    <bpmn:sequenceFlow id="Flow_Gateway_AutoApproved" name="Low Risk (Auto-Approve)" sourceRef="Gateway_RiskDecision" targetRef="ServiceTask_1LINKPayment">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">riskScore &lt;= 0.3</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Gateway_HumanApproval" name="Medium/High Risk" sourceRef="Gateway_RiskDecision" targetRef="UserTask_HumanApproval">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">riskScore &gt; 0.3</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Approval_To_Decision" name="" sourceRef="UserTask_HumanApproval" targetRef="Gateway_HumanDecision" />
+    <bpmn:sequenceFlow id="Flow_Decision_Approved" name="Approved" sourceRef="Gateway_HumanDecision" targetRef="ServiceTask_1LINKPayment">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">humanDecision = "Approved"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Decision_Rejected" name="Rejected" sourceRef="Gateway_HumanDecision" targetRef="EndEvent_BankingRejected">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">humanDecision = "Rejected"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1LINK_To_Raast" name="" sourceRef="ServiceTask_1LINKPayment" targetRef="ServiceTask_RaastTransfer" />
+    <bpmn:sequenceFlow id="Flow_Raast_To_Firebase" name="" sourceRef="ServiceTask_RaastTransfer" targetRef="ServiceTask_FirebaseLog" />
+    <bpmn:sequenceFlow id="Flow_Firebase_To_End" name="" sourceRef="ServiceTask_FirebaseLog" targetRef="EndEvent_BankingSuccess" />
+
+    <!-- Error Flows -->
+    <bpmn:sequenceFlow id="Flow_Error_NADRA_To_End" name="NADRA Error" sourceRef="BoundaryError_NADRA" targetRef="EndEvent_BankingError" />
+    <bpmn:sequenceFlow id="Flow_Error_CBS_To_End" name="CBS Error" sourceRef="BoundaryError_CBS" targetRef="EndEvent_BankingError" />
+
+    <!-- Error Definitions -->
+    <bpmn:error id="Error_NADRA" name="NADRAError" errorCode="ERR_NADRA" />
+    <bpmn:error id="Error_CBS" name="CBSError" errorCode="ERR_CBS" />
+
+    <!-- Operations -->
+    <bpmn:interface id="Interface_Banking" name="SmartBank Banking API Interface">
+      <bpmn:operation id="Operation_NADRAVerify" name="NADRAVerify" implementationRef="SmartBank.API.NADRAVerify">
+        <bpmn:inMessageRef>Message_NADRARequest</bpmn:inMessageRef>
+        <bpmn:outMessageRef>Message_NADRAResponse</bpmn:outMessageRef>
+      </bpmn:operation>
+      <bpmn:operation id="Operation_CBSCheck" name="CBSCheck" implementationRef="SmartBank.API.CBSCheck">
+        <bpmn:inMessageRef>Message_CBSRequest</bpmn:inMessageRef>
+        <bpmn:outMessageRef>Message_CBSResponse</bpmn:outMessageRef>
+      </bpmn:operation>
+      <bpmn:operation id="Operation_BankingApproval" name="BankingApproval" implementationRef="SmartBank.UI.BankingApprovalForm">
+        <bpmn:inMessageRef>Message_ApprovalRequest</bpmn:inMessageRef>
+        <bpmn:outMessageRef>Message_ApprovalResponse</bpmn:outMessageRef>
+      </bpmn:operation>
+      <bpmn:operation id="Operation_1LINKPayment" name="1LINKPayment" implementationRef="SmartBank.API.1LINKPayment">
+        <bpmn:inMessageRef>Message_1LINKRequest</bpmn:inMessageRef>
+        <bpmn:outMessageRef>Message_1LINKResponse</bpmn:outMessageRef>
+      </bpmn:operation>
+      <bpmn:operation id="Operation_RaastTransfer" name="RaastTransfer" implementationRef="SmartBank.API.RaastTransfer">
+        <bpmn:inMessageRef>Message_RaastRequest</bpmn:inMessageRef>
+        <bpmn:outMessageRef>Message_RaastResponse</bpmn:outMessageRef>
+      </bpmn:operation>
+      <bpmn:operation id="Operation_FirebaseLog" name="FirebaseLog" implementationRef="SmartBank.API.FirebaseLog">
+        <bpmn:inMessageRef>Message_FirebaseRequest</bpmn:inMessageRef>
+        <bpmn:outMessageRef>Message_FirebaseResponse</bpmn:outMessageRef>
+      </bpmn:operation>
+    </bpmn:interface>
+
+    <!-- Messages -->
+    <bpmn:message id="Message_NADRARequest" name="SmartBank.NADRARequest.v1" />
+    <bpmn:message id="Message_NADRAResponse" name="SmartBank.NADRAResponse.v1" />
+    <bpmn:message id="Message_CBSRequest" name="SmartBank.CBSRequest.v1" />
+    <bpmn:message id="Message_CBSResponse" name="SmartBank.CBSResponse.v1" />
+    <bpmn:message id="Message_ApprovalRequest" name="SmartBank.BankingApprovalRequest.v1" />
+    <bpmn:message id="Message_ApprovalResponse" name="SmartBank.BankingApprovalResponse.v1" />
+    <bpmn:message id="Message_1LINKRequest" name="SmartBank.1LINKRequest.v1" />
+    <bpmn:message id="Message_1LINKResponse" name="SmartBank.1LINKResponse.v1" />
+    <bpmn:message id="Message_RaastRequest" name="SmartBank.RaastRequest.v1" />
+    <bpmn:message id="Message_RaastResponse" name="SmartBank.RaastResponse.v1" />
+    <bpmn:message id="Message_FirebaseRequest" name="SmartBank.FirebaseRequest.v1" />
+    <bpmn:message id="Message_FirebaseResponse" name="SmartBank.FirebaseResponse.v1" />
+
+    <!-- Data Inputs/Outputs -->
+    <bpmn:dataInput id="DataInput_NADRARequest" name="NADRARequest" itemSubjectRef="ItemDef_String" />
+    <bpmn:dataOutput id="DataOutput_NADRAResponse" name="NADRAResponse" itemSubjectRef="ItemDef_String" />
+    <bpmn:dataInput id="DataInput_CBSRequest" name="CBSRequest" itemSubjectRef="ItemDef_String" />
+    <bpmn:dataOutput id="DataOutput_CBSResponse" name="CBSResponse" itemSubjectRef="ItemDef_String" />
+    <bpmn:dataOutput id="DataOutput_ApprovalResponse" name="ApprovalResponse" itemSubjectRef="ItemDef_String" />
+    <bpmn:dataInput id="DataInput_1LINKRequest" name="1LINKRequest" itemSubjectRef="ItemDef_String" />
+    <bpmn:dataOutput id="DataOutput_1LINKResponse" name="1LINKResponse" itemSubjectRef="ItemDef_String" />
+    <bpmn:dataInput id="DataInput_RaastRequest" name="RaastRequest" itemSubjectRef="ItemDef_String" />
+    <bpmn:dataOutput id="DataOutput_RaastResponse" name="RaastResponse" itemSubjectRef="ItemDef_String" />
+    <bpmn:dataInput id="DataInput_FirebaseRequest" name="FirebaseRequest" itemSubjectRef="ItemDef_String" />
+    <bpmn:dataOutput id="DataOutput_FirebaseResponse" name="FirebaseResponse" itemSubjectRef="ItemDef_String" />
+
+    <!-- BPMN Diagram -->
+    <bpmndi:BPMNDiagram id="BPMNDiagram_BankingWorkflow" name="Banking Workflow Diagram">
+      <bpmndi:BPMNPlane id="BPMNPlane_BankingWorkflow" bpmnElement="BankingWorkflow">
+        <!-- Start Event -->
+        <bpmndi:BPMNShape id="Shape_Start_Banking" bpmnElement="StartEvent_BankingRequest">
+          <dc:Bounds x="50" y="200" width="36" height="36" />
+        </bpmndi:BPMNShape>
+        <!-- NADRA Service Task -->
+        <bpmndi:BPMNShape id="Shape_NADRA" bpmnElement="ServiceTask_NADRAVerify">
+          <dc:Bounds x="145" y="170" width="110" height="80" />
+        </bpmndi:BPMNShape>
+        <!-- CBS Service Task -->
+        <bpmndi:BPMNShape id="Shape_CBS" bpmnElement="ServiceTask_CBSAccountCheck">
+          <dc:Bounds x="310" y="170" width="110" height="80" />
+        </bpmndi:BPMNShape>
+        <!-- Risk Decision Gateway -->
+        <bpmndi:BPMNShape id="Shape_RiskGateway" bpmnElement="Gateway_RiskDecision">
+          <dc:Bounds x="480" y="180" width="50" height="50" />
+        </bpmndi:BPMNShape>
+        <!-- Human Approval -->
+        <bpmndi:BPMNShape id="Shape_HumanApproval" bpmnElement="UserTask_HumanApproval">
+          <dc:Bounds x="470" y="310" width="110" height="80" />
+        </bpmndi:BPMNShape>
+        <!-- Human Decision Gateway -->
+        <bpmndi:BPMNShape id="Shape_HumanDecisionGateway" bpmnElement="Gateway_HumanDecision">
+          <dc:Bounds x="640" y="320" width="50" height="50" />
+        </bpmndi:BPMNShape>
+        <!-- 1LINK Service Task -->
+        <bpmndi:BPMNShape id="Shape_1LINK" bpmnElement="ServiceTask_1LINKPayment">
+          <dc:Bounds x="600" y="170" width="110" height="80" />
+        </bpmndi:BPMNShape>
+        <!-- Raast Service Task -->
+        <bpmndi:BPMNShape id="Shape_Raast" bpmnElement="ServiceTask_RaastTransfer">
+          <dc:Bounds x="760" y="170" width="110" height="80" />
+        </bpmndi:BPMNShape>
+        <!-- Firebase Service Task -->
+        <bpmndi:BPMNShape id="Shape_Firebase" bpmnElement="ServiceTask_FirebaseLog">
+          <dc:Bounds x="920" y="170" width="110" height="80" />
+        </bpmndi:BPMNShape>
+        <!-- End Success -->
+        <bpmndi:BPMNShape id="Shape_End_Success" bpmnElement="EndEvent_BankingSuccess">
+          <dc:Bounds x="1090" y="192" width="36" height="36" />
+        </bpmndi:BPMNShape>
+        <!-- End Rejected -->
+        <bpmndi:BPMNShape id="Shape_End_Rejected" bpmnElement="EndEvent_BankingRejected">
+          <dc:Bounds x="760" y="355" width="36" height="36" />
+        </bpmndi:BPMNShape>
+        <!-- End Error -->
+        <bpmndi:BPMNShape id="Shape_End_Error" bpmnElement="EndEvent_BankingError">
+          <dc:Bounds x="50" y="355" width="36" height="36" />
+        </bpmndi:BPMNShape>
+
+        <!-- Boundary Error Shapes -->
+        <bpmndi:BPMNShape id="Shape_BoundaryError_NADRA" bpmnElement="BoundaryError_NADRA">
+          <dc:Bounds x="165" y="250" width="36" height="36" />
+        </bpmndi:BPMNShape>
+        <bpmndi:BPMNShape id="Shape_BoundaryError_CBS" bpmnElement="BoundaryError_CBS">
+          <dc:Bounds x="330" y="250" width="36" height="36" />
+        </bpmndi:BPMNShape>
+        <bpmndi:BPMNShape id="Shape_BoundaryTimer_Approval" bpmnElement="BoundaryTimer_Approval">
+          <dc:Bounds x="524" y="390" width="36" height="36" />
+        </bpmndi:BPMNShape>
+
+        <!-- Edges -->
+        <bpmndi:BPMNEdge id="Edge_Start_To_NADRA" bpmnElement="Flow_Start_To_NADRA">
+          <di:waypoint x="86" y="218" />
+          <di:waypoint x="145" y="210" />
+        </bpmndi:BPMNEdge>
+        <bpmndi:BPMNEdge id="Edge_NADRA_To_CBS" bpmnElement="Flow_NADRA_To_CBS">
+          <di:waypoint x="255" y="210" />
+          <di:waypoint x="310" y="210" />
+        </bpmndi:BPMNEdge>
+        <bpmndi:BPMNEdge id="Edge_CBS_To_Gateway" bpmnElement="Flow_CBS_To_Gateway">
+          <di:waypoint x="420" y="210" />
+          <di:waypoint x="480" y="205" />
+        </bpmndi:BPMNEdge>
+        <bpmndi:BPMNEdge id="Edge_Gateway_AutoApprove" bpmnElement="Flow_Gateway_AutoApproved">
+          <di:waypoint x="505" y="180" />
+          <di:waypoint x="505" y="115" />
+          <di:waypoint x="655" y="115" />
+          <di:waypoint x="655" y="170" />
+        </bpmndi:BPMNEdge>
+        <bpmndi:BPMNEdge id="Edge_Gateway_HumanApproval" bpmnElement="Flow_Gateway_HumanApproval">
+          <di:waypoint x="505" y="230" />
+          <di:waypoint x="505" y="310" />
+        </bpmndi:BPMNEdge>
+        <bpmndi:BPMNEdge id="Edge_Approval_To_Decision" bpmnElement="Flow_Approval_To_Decision">
+          <di:waypoint x="580" y="350" />
+          <di:waypoint x="640" y="345" />
+        </bpmndi:BPMNEdge>
+        <bpmndi:BPMNEdge id="Edge_Decision_Approved" bpmnElement="Flow_Decision_Approved">
+          <di:waypoint x="665" y="320" />
+          <di:waypoint x="665" y="220" />
+          <di:waypoint x="710" y="210" />
+        </bpmndi:BPMNEdge>
+        <bpmndi:BPMNEdge id="Edge_Decision_Rejected" bpmnElement="Flow_Decision_Rejected">
+          <di:waypoint x="690" y="345" />
+          <di:waypoint x="760" y="373" />
+        </bpmndi:BPMNEdge>
+        <bpmndi:BPMNEdge id="Edge_1LINK_To_Raast" bpmnElement="Flow_1LINK_To_Raast">
+          <di:waypoint x="710" y="210" />
+          <di:waypoint x="760" y="210" />
+        </bpmndi:BPMNEdge>
+        <bpmndi:BPMNEdge id="Edge_Raast_To_Firebase" bpmnElement="Flow_Raast_To_Firebase">
+          <di:waypoint x="870" y="210" />
+          <di:waypoint x="920" y="210" />
+        </bpmndi:BPMNEdge>
+        <bpmndi:BPMNEdge id="Edge_Firebase_To_End" bpmnElement="Flow_Firebase_To_End">
+          <di:waypoint x="1030" y="210" />
+          <di:waypoint x="1090" y="210" />
+        </bpmndi:BPMNEdge>
+        <bpmndi:BPMNEdge id="Edge_Error_NADRA_To_End" bpmnElement="Flow_Error_NADRA_To_End">
+          <di:waypoint x="183" y="286" />
+          <di:waypoint x="183" y="320" />
+          <di:waypoint x="68" y="355" />
+        </bpmndi:BPMNEdge>
+        <bpmndi:BPMNEdge id="Edge_Error_CBS_To_End" bpmnElement="Flow_Error_CBS_To_End">
+          <di:waypoint x="348" y="286" />
+          <di:waypoint x="348" y="320" />
+          <di:waypoint x="68" y="373" />
+        </bpmndi:BPMNEdge>
+        <bpmndi:BPMNEdge id="Edge_Timer_Approval_To_Rejected" bpmnElement="Flow_Decision_Rejected">
+          <di:waypoint x="542" y="426" />
+          <di:waypoint x="542" y="440" />
+          <di:waypoint x="778" y="440" />
+          <di:waypoint x="778" y="391" />
+        </bpmndi:BPMNEdge>
+      </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+  </bpmn:process>
+</bpmn:definitions>

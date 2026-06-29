@@ -1,0 +1,228 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://smartbank.ai/schemas/classification-result.json",
+  "title": "SmartBankIntentClassificationResult",
+  "description": "Structured output schema for the SmartBank AI Request Classification Agent. Used for routing customer banking requests from Web, Mobile, IVR, and WhatsApp channels to the Maestro orchestration engine.",
+  "type": "object",
+  "required": [
+    "request_id",
+    "timestamp",
+    "channel",
+    "raw_input",
+    "detected_language",
+    "intent",
+    "entities",
+    "missing_fields",
+    "escalate_to_human",
+    "maestro_payload"
+  ],
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "description": "Universally unique identifier for the request (UUID v4).",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "ISO-8601 formatted timestamp of when the request was received (UTC).",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "channel": {
+      "type": "string",
+      "description": "The communication channel through which the request was received.",
+      "enum": ["web", "mobile", "ivr", "whatsapp"]
+    },
+    "raw_input": {
+      "type": "string",
+      "description": "The original raw text input from the customer, preserved verbatim for auditing.",
+      "minLength": 1,
+      "maxLength": 5000
+    },
+    "detected_language": {
+      "type": "string",
+      "description": "Detected language of the raw input. 'en' for English, 'ur' for Roman Urdu or Urdu script, 'mixed' for code-switched content.",
+      "enum": ["en", "ur", "mixed"]
+    },
+    "intent": {
+      "type": "object",
+      "description": "The classified intent with confidence score.",
+      "required": ["code", "label", "confidence"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Intent classification code.",
+          "enum": ["ATM01", "PIN02", "DEB03", "STM04", "LTR05", "NIC06", "IB07", "MB08", "UNKNOWN"]
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable label for the intent.",
+          "enum": [
+            "ATM Card Activation",
+            "PIN Generation / Reset",
+            "Debit Card Block / Unblock",
+            "Bank Statement Generation",
+            "Account Opening Letter",
+            "Identity Card / CNIC Update",
+            "Internet Banking Access Recovery",
+            "Mobile Banking Activation",
+            "Unknown Request"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "description": "Confidence score for the classified intent ranging from 0.0 to 1.0.",
+          "minimum": 0.0,
+          "maximum": 1.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "entities": {
+      "type": "object",
+      "description": "Extracted entities from the raw input, with PII masked.",
+      "required": [
+        "account_number",
+        "cnic",
+        "registered_mobile",
+        "email",
+        "card_last_four",
+        "date_of_birth",
+        "statement_period",
+        "branch_code"
+      ],
+      "properties": {
+        "account_number": {
+          "type": ["string", "null"],
+          "description": "Bank account number (masked). Format: 10–16 digits.",
+          "pattern": "^(\\*{4,12}\\d{4}|\\d{10,16}|null)$"
+        },
+        "cnic": {
+          "type": ["string", "null"],
+          "description": "Computerised National Identity Card number (masked). Format: XXXXX-XXXXXXX-X.",
+          "pattern": "^(\\*{5}-\\*{3}\\d{4}-\\*|\\d{5}-\\d{7}-\\d|\\*{8,}\\d{1,}|null)$"
+        },
+        "registered_mobile": {
+          "type": ["string", "null"],
+          "description": "Registered mobile number (masked). Pakistan format: 03XX-XXXXXXX.",
+          "pattern": "^(\\*{7,}\\d{2,4}|03\\d{2}-?\\d{7}|\\d{11}|null)$"
+        },
+        "email": {
+          "type": ["string", "null"],
+          "description": "Email address (masked).",
+          "pattern": "^(\\w)[\\w\\.\\-]*@[\\w\\.\\-]+\\.[a-z]{2,}|null$"
+        },
+        "card_last_four": {
+          "type": ["string", "null"],
+          "description": "Last 4 digits of the debit/credit card.",
+          "pattern": "^(\\d{4}|null)$"
+        },
+        "date_of_birth": {
+          "type": ["string", "null"],
+          "description": "Date of birth in YYYY-MM-DD format.",
+          "pattern": "^(\\d{4}-\\d{2}-\\d{2}|null)$"
+        },
+        "statement_period": {
+          "type": ["string", "null"],
+          "description": "Requested statement period (e.g., 'last 3 months', 'Jan 2025', '2025-01 to 2025-03').",
+          "maxLength": 100
+        },
+        "branch_code": {
+          "type": ["string", "null"],
+          "description": "Branch code (4 digits).",
+          "pattern": "^(\\d{4}|null)$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "missing_fields": {
+      "type": "array",
+      "description": "List of required entity fields that are missing from the customer request.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "account_number",
+          "cnic",
+          "registered_mobile",
+          "email",
+          "card_last_four",
+          "date_of_birth",
+          "statement_period",
+          "branch_code"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "follow_up_question": {
+      "type": ["string", "null"],
+      "description": "A natural-language follow-up question asking the customer to provide missing mandatory fields. Null if all required fields are present.",
+      "maxLength": 500
+    },
+    "escalate_to_human": {
+      "type": "boolean",
+      "description": "Flag indicating whether this request should be escalated to a human agent."
+    },
+    "escalation_reason": {
+      "type": ["string", "null"],
+      "description": "Reason for escalation. Null if escalation is not required.",
+      "maxLength": 500
+    },
+    "maestro_payload": {
+      "type": "object",
+      "description": "Payload forwarded to the Maestro orchestration engine for downstream processing.",
+      "required": ["alternative_intents", "request_summary", "priority", "target_service"],
+      "properties": {
+        "alternative_intents": {
+          "type": "array",
+          "description": "Alternative intent classifications with confidence > 0.3 (excluding the primary intent), ordered by descending confidence.",
+          "items": {
+            "type": "object",
+            "required": ["code", "label", "confidence"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": ["ATM01", "PIN02", "DEB03", "STM04", "LTR05", "NIC06", "IB07", "MB08", "UNKNOWN"]
+              },
+              "label": {
+                "type": "string"
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "request_summary": {
+          "type": "string",
+          "description": "One-sentence summary of the customer request for the human agent dashboard.",
+          "maxLength": 300
+        },
+        "priority": {
+          "type": "string",
+          "description": "Priority level derived from the intent category. CRITICAL > HIGH > MEDIUM > LOW.",
+          "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+        },
+        "target_service": {
+          "type": "string",
+          "description": "The downstream microservice that should handle this request.",
+          "enum": [
+            "card_management",
+            "pin_management",
+            "statement_generation",
+            "document_issuance",
+            "identity_update",
+            "internet_banking",
+            "mobile_banking",
+            "human_agent"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

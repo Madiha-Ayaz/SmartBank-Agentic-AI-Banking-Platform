@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_Deb03CardBlock" targetNamespace="http://smartbank.ai/bpmn" exporter="SmartBank Maestro Designer" exporterVersion="1.0">
+  <bpmn:process id="Deb03CardBlock" name="Card Block" isExecutable="true" processType="Private">
+    <bpmn:extensions>
+      <bpmn:property id="namespace" value="http://smartbank.ai/debit" />
+      <bpmn:property id="version" value="1.0.0" />
+      <bpmn:property id="riskLevel" value="Critical" />
+      <bpmn:property id="requiresApproval" value="true" />
+      <bpmn:property id="description" value="Blocks a debit/credit card. Critical operation requiring manager approval." />
+    </bpmn:extensions>
+
+    <bpmn:property id="caseId" name="caseId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="customerId" name="customerId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="requestPayload" name="requestPayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="responsePayload" name="responsePayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="cardNumber" name="cardNumber" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="blockReason" name="blockReason" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="approvalStatus" name="approvalStatus" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="blockStatus" name="blockStatus" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="fraudFlag" name="fraudFlag" itemSubjectRef="ItemDef_Boolean" />
+    <bpmn:property id="errorCode" name="errorCode" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="retryCount" name="retryCount" itemSubjectRef="ItemDef_Int" />
+
+    <bpmn:itemDefinition id="ItemDef_String" structureRef="xsd:string" />
+    <bpmn:itemDefinition id="ItemDef_Int" structureRef="xsd:int" />
+    <bpmn:itemDefinition id="ItemDef_Boolean" structureRef="xsd:boolean" />
+
+    <bpmn:startEvent id="StartEvent_DEB03" name="Card Block Request">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="signal" />
+        <bpmn:property id="signalName" value="SmartBank.DEB03.Block" />
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+
+    <!-- Service Task 1: Fraud Check -->
+    <bpmn:serviceTask id="ServiceTask_FraudCheck" name="Fraud Check" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/fraud/check" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="20000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="Fraud Detection Service" />
+        <bpmn:property id="inputs" value="cardNumber, customerId, requestPayload" />
+        <bpmn:property id="outputs" value="fraudFlag, blockReason" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_FraudCheck" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_DEB03_Fraud">
+        <bpmn:targetRef>DataInput_FraudCheck</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{cardNumber, customerId, requestPayload}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_FraudCheck</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_DEB03_Fraud">
+        <bpmn:sourceRef>DataOutput_FraudCheck</bpmn:sourceRef>
+        <bpmn:targetRef>fraudFlag</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_FraudCheck.fraudFlag</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">fraudFlag</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_DEB03_Fraud" attachedToRef="ServiceTask_FraudCheck">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_DEB03_Fraud" errorRef="Error_FraudCheck" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_DEB03_Fraud" attachedToRef="ServiceTask_FraudCheck">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_DEB03_Fraud">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT30S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <bpmn:exclusiveGateway id="Gateway_FraudResult" name="Fraud Result?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_DEB03_Start_To_Fraud" name="" sourceRef="StartEvent_DEB03" targetRef="ServiceTask_FraudCheck" />
+    <bpmn:sequenceFlow id="Flow_DEB03_Fraud_To_Gateway" name="" sourceRef="ServiceTask_FraudCheck" targetRef="Gateway_FraudResult" />
+
+    <!-- High Fraud -> Immediate Block (no approval needed) -->
+    <bpmn:sequenceFlow id="Flow_DEB03_Fraud_High" name="Fraud Detected" sourceRef="Gateway_FraudResult" targetRef="ServiceTask_BlockCard">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">fraudFlag = True</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <!-- No Fraud -> Manager Approval -->
+    <bpmn:sequenceFlow id="Flow_DEB03_NoFraud" name="No Fraud" sourceRef="Gateway_FraudResult" targetRef="UserTask_ManagerApproval">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">fraudFlag = False</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:userTask id="UserTask_ManagerApproval" name="Manager Approval" implementation="UiPath.Persona.Manager">
+      <bpmn:extensionElements>
+        <bpmn:property id="taskQueue" value="SmartBank.ManagerApproval.CardBlock" />
+        <bpmn:property id="priority" value="Critical" />
+        <bpmn:property id="slaTimeout" value="PT4H" />
+        <bpmn:property id="escalationAfter" value="PT30M" />
+        <bpmn:property id="escalationLevel" value="2" />
+        <bpmn:property id="formType" value="SmartBank.CardBlockApproval.v1" />
+        <bpmn:property id="performer" value="Branch Manager / Regional Manager" />
+        <bpmn:property id="inputs" value="customerId, cardNumber, blockReason" />
+        <bpmn:property id="outputs" value="approvalStatus" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_DEB03Approval" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_DEB03_Approval">
+        <bpmn:targetRef>DataInput_Approval</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId, cardNumber, blockReason}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_Approval</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_DEB03_Approval">
+        <bpmn:sourceRef>DataOutput_Approval</bpmn:sourceRef>
+        <bpmn:targetRef>approvalStatus</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_Approval</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">approvalStatus</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:userTask>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_DEB03_Approval" attachedToRef="UserTask_ManagerApproval">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_DEB03_Approval">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT4H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <bpmn:exclusiveGateway id="Gateway_ApprovalResult" name="Approved?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_DEB03_Approval_To_Gateway" name="" sourceRef="UserTask_ManagerApproval" targetRef="Gateway_ApprovalResult" />
+
+    <bpmn:sequenceFlow id="Flow_DEB03_Approved" name="Approved" sourceRef="Gateway_ApprovalResult" targetRef="ServiceTask_BlockCard">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "Approved"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <!-- Service Task: Block Card -->
+    <bpmn:serviceTask id="ServiceTask_BlockCard" name="Block Card" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/card/block" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="30000" />
+        <bpmn:property id="slaTimeout" value="PT1M" />
+        <bpmn:property id="performer" value="Card Management Service" />
+        <bpmn:property id="inputs" value="cardNumber, blockReason, customerId" />
+        <bpmn:property id="outputs" value="blockStatus, responsePayload" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_BlockCard" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_DEB03_Block">
+        <bpmn:targetRef>DataInput_BlockCard</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{cardNumber, blockReason, customerId}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_BlockCard</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_DEB03_Block">
+        <bpmn:sourceRef>DataOutput_BlockCard</bpmn:sourceRef>
+        <bpmn:targetRef>responsePayload</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_BlockCard</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">responsePayload</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_DEB03_Block" attachedToRef="ServiceTask_BlockCard">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_DEB03_Block" errorRef="Error_CardBlock" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_DEB03_Block" attachedToRef="ServiceTask_BlockCard">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_DEB03_Block">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Block Confirmed? -->
+    <bpmn:exclusiveGateway id="Gateway_BlockConfirmed" name="Block Confirmed?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_DEB03_Block_To_Gateway" name="" sourceRef="ServiceTask_BlockCard" targetRef="Gateway_BlockConfirmed" />
+
+    <bpmn:sequenceFlow id="Flow_DEB03_Success" name="Blocked" sourceRef="Gateway_BlockConfirmed" targetRef="EndEvent_DEB03_Success">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">blockStatus = "Blocked" OrElse IsNothing(errorCode)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_DEB03_Success" name="Card Blocked">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.DEB03.Blocked" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- Failure Paths -->
+    <bpmn:sequenceFlow id="Flow_DEB03_Rejected" name="Rejected" sourceRef="Gateway_ApprovalResult" targetRef="EndEvent_DEB03_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "Rejected"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_DEB03_BlockFailed" name="Failed" sourceRef="Gateway_BlockConfirmed" targetRef="EndEvent_DEB03_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">Not IsNothing(errorCode)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_DEB03_Failed" name="Card Block Failed">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.DEB03.Failed" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_DEB03_Error_Fraud" name="Fraud Error" sourceRef="BoundaryError_DEB03_Fraud" targetRef="EndEvent_DEB03_Failed" />
+    <bpmn:sequenceFlow id="Flow_DEB03_Timer_Fraud" name="Fraud SLA" sourceRef="BoundaryTimer_DEB03_Fraud" targetRef="EndEvent_DEB03_Failed" />
+    <bpmn:sequenceFlow id="Flow_DEB03_Timer_Approval" name="Approval SLA" sourceRef="BoundaryTimer_DEB03_Approval" targetRef="EndEvent_DEB03_Failed" />
+    <bpmn:sequenceFlow id="Flow_DEB03_Error_Block" name="Block Error" sourceRef="BoundaryError_DEB03_Block" targetRef="EndEvent_DEB03_Failed" />
+    <bpmn:sequenceFlow id="Flow_DEB03_Timer_Block" name="Block SLA" sourceRef="BoundaryTimer_DEB03_Block" targetRef="EndEvent_DEB03_Failed" />
+
+    <bpmn:error id="Error_FraudCheck" name="FraudCheckError" errorCode="ERR_FRAUD_CHECK" />
+    <bpmn:error id="Error_CardBlock" name="CardBlockError" errorCode="ERR_CARD_BLOCK" />
+  </bpmn:process>
+
+  <bpmn:interface id="Interface_DEB03" name="Card Block API Interface">
+    <bpmn:operation id="Operation_FraudCheck" name="FraudCheck" implementationRef="SmartBank.API.FraudCheck">
+      <bpmn:inMessageRef>Message_FraudCheckRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_FraudCheckResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_DEB03Approval" name="CardBlockApproval" implementationRef="SmartBank.UI.CardBlockApproval">
+      <bpmn:inMessageRef>Message_DEB03ApprovalRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_DEB03ApprovalResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_BlockCard" name="BlockCard" implementationRef="SmartBank.API.BlockCard">
+      <bpmn:inMessageRef>Message_BlockCardRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_BlockCardResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+  </bpmn:interface>
+
+  <bpmn:message id="Message_FraudCheckRequest" name="SmartBank.FraudCheckRequest.v1" />
+  <bpmn:message id="Message_FraudCheckResponse" name="SmartBank.FraudCheckResponse.v1" />
+  <bpmn:message id="Message_DEB03ApprovalRequest" name="SmartBank.CardBlockApprovalRequest.v1" />
+  <bpmn:message id="Message_DEB03ApprovalResponse" name="SmartBank.CardBlockApprovalResponse.v1" />
+  <bpmn:message id="Message_BlockCardRequest" name="SmartBank.BlockCardRequest.v1" />
+  <bpmn:message id="Message_BlockCardResponse" name="SmartBank.BlockCardResponse.v1" />
+
+  <bpmn:dataInput id="DataInput_FraudCheck" name="FraudCheckInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_FraudCheck" name="FraudCheckOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_Approval" name="ApprovalInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_Approval" name="ApprovalOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_BlockCard" name="BlockCardInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_BlockCard" name="BlockCardOutput" itemSubjectRef="ItemDef_String" />
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_DEB03" name="Card Block Diagram">
+    <bpmndi:BPMNPlane id="BPMNPlane_DEB03" bpmnElement="Deb03CardBlock">
+      <bpmndi:BPMNShape id="Shape_DEB03_Start" bpmnElement="StartEvent_DEB03">
+        <dc:Bounds x="50" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DEB03_Fraud" bpmnElement="ServiceTask_FraudCheck">
+        <dc:Bounds x="160" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DEB03_Gateway_Fraud" bpmnElement="Gateway_FraudResult">
+        <dc:Bounds x="350" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DEB03_Approval" bpmnElement="UserTask_ManagerApproval">
+        <dc:Bounds x="470" y="120" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DEB03_Gateway_Approved" bpmnElement="Gateway_ApprovalResult">
+        <dc:Bounds x="660" y="130" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DEB03_Block" bpmnElement="ServiceTask_BlockCard">
+        <dc:Bounds x="780" y="250" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DEB03_Gateway_Confirmed" bpmnElement="Gateway_BlockConfirmed">
+        <dc:Bounds x="970" y="260" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DEB03_End_Success" bpmnElement="EndEvent_DEB03_Success">
+        <dc:Bounds x="1100" y="220" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DEB03_End_Failed" bpmnElement="EndEvent_DEB03_Failed">
+        <dc:Bounds x="1100" y="330" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_DEB03_Error_Fraud" bpmnElement="BoundaryError_DEB03_Fraud">
+        <dc:Bounds x="180" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DEB03_Timer_Fraud" bpmnElement="BoundaryTimer_DEB03_Fraud">
+        <dc:Bounds x="224" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DEB03_Timer_Approval" bpmnElement="BoundaryTimer_DEB03_Approval">
+        <dc:Bounds x="512" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DEB03_Error_Block" bpmnElement="BoundaryError_DEB03_Block">
+        <dc:Bounds x="800" y="330" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_DEB03_Timer_Block" bpmnElement="BoundaryTimer_DEB03_Block">
+        <dc:Bounds x="844" y="330" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Edge_DEB03_Start_To_Fraud" bpmnElement="Flow_DEB03_Start_To_Fraud">
+        <di:waypoint x="86" y="218" />
+        <di:waypoint x="160" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_Fraud_To_Gateway" bpmnElement="Flow_DEB03_Fraud_To_Gateway">
+        <di:waypoint x="280" y="218" />
+        <di:waypoint x="350" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_Fraud_High" bpmnElement="Flow_DEB03_Fraud_High">
+        <di:waypoint x="400" y="213" />
+        <di:waypoint x="400" y="290" />
+        <di:waypoint x="780" y="290" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_NoFraud" bpmnElement="Flow_DEB03_NoFraud">
+        <di:waypoint x="375" y="238" />
+        <di:waypoint x="375" y="160" />
+        <di:waypoint x="470" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_Approval_To_Gateway" bpmnElement="Flow_DEB03_Approval_To_Gateway">
+        <di:waypoint x="590" y="160" />
+        <di:waypoint x="660" y="155" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_Approved" bpmnElement="Flow_DEB03_Approved">
+        <di:waypoint x="710" y="155" />
+        <di:waypoint x="710" y="290" />
+        <di:waypoint x="780" y="290" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_Block_To_Gateway" bpmnElement="Flow_DEB03_Block_To_Gateway">
+        <di:waypoint x="900" y="290" />
+        <di:waypoint x="970" y="285" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_Success" bpmnElement="Flow_DEB03_Success">
+        <di:waypoint x="1020" y="285" />
+        <di:waypoint x="1100" y="238" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_Rejected" bpmnElement="Flow_DEB03_Rejected">
+        <di:waypoint x="685" y="180" />
+        <di:waypoint x="685" y="410" />
+        <di:waypoint x="1118" y="410" />
+        <di:waypoint x="1118" y="366" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_BlockFailed" bpmnElement="Flow_DEB03_BlockFailed">
+        <di:waypoint x="995" y="310" />
+        <di:waypoint x="995" y="410" />
+        <di:waypoint x="1118" y="410" />
+        <di:waypoint x="1118" y="366" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_Error_Fraud" bpmnElement="Flow_DEB03_Error_Fraud">
+        <di:waypoint x="198" y="294" />
+        <di:waypoint x="198" y="430" />
+        <di:waypoint x="1118" y="430" />
+        <di:waypoint x="1118" y="366" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_Timer_Fraud" bpmnElement="Flow_DEB03_Timer_Fraud">
+        <di:waypoint x="242" y="294" />
+        <di:waypoint x="242" y="450" />
+        <di:waypoint x="1118" y="450" />
+        <di:waypoint x="1118" y="366" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_Timer_Approval" bpmnElement="Flow_DEB03_Timer_Approval">
+        <di:waypoint x="530" y="200" />
+        <di:waypoint x="530" y="390" />
+        <di:waypoint x="1118" y="390" />
+        <di:waypoint x="1118" y="366" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_Error_Block" bpmnElement="Flow_DEB03_Error_Block">
+        <di:waypoint x="818" y="366" />
+        <di:waypoint x="818" y="430" />
+        <di:waypoint x="1118" y="430" />
+        <di:waypoint x="1118" y="366" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_Timer_Block" bpmnElement="Flow_DEB03_Timer_Block">
+        <di:waypoint x="862" y="366" />
+        <di:waypoint x="862" y="450" />
+        <di:waypoint x="1118" y="450" />
+        <di:waypoint x="1118" y="366" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

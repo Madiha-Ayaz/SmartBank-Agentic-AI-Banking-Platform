@@ -1,0 +1,875 @@
+{
+  "info": {
+    "name": "SmartBank Open Banking API",
+    "description": "Complete Postman collection for the SmartBank Open Banking REST API v7.0.0. Supports OAuth 2.0 with PKCE, mTLS, and all endpoint groups: Customer Identity, Accounts, Cards, Digital Banking, and Notifications.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "smartbank-devrel"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://staging-api.smartbank.ai/v1", "type": "string" },
+    { "key": "client_id", "value": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "type": "string" },
+    { "key": "client_secret", "value": "supersecretclientsecret", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "refresh_token", "value": "", "type": "string" },
+    { "key": "token_expires_at", "value": "", "type": "string" },
+    { "key": "customer_id", "value": "f47ac10b-58cc-4372-a567-0e02b2c3d479", "type": "string" },
+    { "key": "account_id", "value": "b1c2d3e4-f5a6-7890-bcde-f123456789ab", "type": "string" },
+    { "key": "card_id", "value": "c1d2e3f4-a5b6-7890-cdef-123456789abc", "type": "string" },
+    { "key": "device_id", "value": "d1e2v3i4-c5e6-7890-abcd-ef1234567890", "type": "string" },
+    { "key": "otp_code", "value": "482931", "type": "string" },
+    { "key": "otp_reference", "value": "OTP-REF-ABC123", "type": "string" },
+    { "key": "idempotency_key", "value": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "type": "string" },
+    { "key": "statement_from", "value": "2026-01-01", "type": "string" },
+    { "key": "statement_to", "value": "2026-06-20", "type": "string" }
+  ],
+  "auth": {
+    "type": "oauth2",
+    "oauth2": [
+      { "key": "grant_type", "value": "client_credentials", "type": "string" },
+      { "key": "accessTokenUrl", "value": "{{base_url}}/auth/token", "type": "string" },
+      { "key": "clientId", "value": "{{client_id}}", "type": "string" },
+      { "key": "clientSecret", "value": "{{client_secret}}", "type": "string" },
+      { "key": "addTokenTo", "value": "header", "type": "string" },
+      { "key": "tokenType", "value": "Bearer", "type": "string" },
+      { "key": "usePkce", "value": false, "type": "boolean" }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const tokenExpiresAt = pm.variables.get('token_expires_at');",
+          "const accessToken = pm.variables.get('access_token');",
+          "const clientId = pm.variables.get('client_id');",
+          "const clientSecret = pm.variables.get('client_secret');",
+          "const baseUrl = pm.variables.get('base_url');",
+          "const requestUrl = pm.request.url.toString();",
+          "if (requestUrl.includes('/auth/token')) { return; }",
+          "const now = Math.floor(Date.now() / 1000);",
+          "const buffer = 60;",
+          "if (!accessToken || !tokenExpiresAt || (parseInt(tokenExpiresAt) - buffer) <= now) {",
+          "  console.log('[SmartBank] Token expired or missing - refreshing...');",
+          "  const tokenRequest = {",
+          "    url: baseUrl + '/auth/token',",
+          "    method: 'POST',",
+          "    header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+          "    body: {",
+          "      mode: 'urlencoded',",
+          "      urlencoded: [",
+          "        { key: 'grant_type', value: 'client_credentials' },",
+          "        { key: 'client_id', value: clientId },",
+          "        { key: 'client_secret', value: clientSecret }",
+          "      ]",
+          "    }",
+          "  };",
+          "  pm.sendRequest(tokenRequest, (err, res) => {",
+          "    if (err) { console.error('[SmartBank] Token refresh failed:', err); return; }",
+          "    const json = res.json();",
+          "    if (json.access_token) {",
+          "      pm.variables.set('access_token', json.access_token);",
+          "      const expiresAt = Math.floor(Date.now() / 1000) + json.expires_in;",
+          "      pm.variables.set('token_expires_at', expiresAt.toString());",
+          "      if (json.refresh_token) { pm.variables.set('refresh_token', json.refresh_token); }",
+          "    }",
+          "  });",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const statusCode = pm.response.code;",
+          "const responseTime = pm.response.responseTime;",
+          "pm.test('Status is not a server error (5xx)', () => {",
+          "  pm.expect(statusCode).to.not.be.oneOf([500, 502, 503, 504]);",
+          "});",
+          "pm.test('Response time is less than 5000ms', () => {",
+          "  pm.expect(responseTime).to.be.below(5000);",
+          "});",
+          "pm.test('Rate limit headers are present', () => {",
+          "  pm.expect(pm.response.headers.get('X-RateLimit-Limit')).to.exist;",
+          "  pm.expect(pm.response.headers.get('X-RateLimit-Remaining')).to.exist;",
+          "  pm.expect(pm.response.headers.get('X-RateLimit-Reset')).to.exist;",
+          "});",
+          "pm.test('Security headers are present', () => {",
+          "  pm.expect(pm.response.headers.get('Strict-Transport-Security')).to.exist;",
+          "  pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.exist;",
+          "  pm.expect(pm.response.headers.get('X-Frame-Options')).to.exist;",
+          "  pm.expect(pm.response.headers.get('Content-Security-Policy')).to.exist;",
+          "});",
+          "const contentType = pm.response.headers.get('Content-Type') || '';",
+          "if (contentType.includes('application/json') && pm.response.body) {",
+          "  pm.test('Response body is valid JSON', () => {",
+          "    pm.expect(() => JSON.parse(pm.response.body)).to.not.throw();",
+          "  });",
+          "}",
+          "if (statusCode >= 400 && contentType.includes('application/json')) {",
+          "  pm.test('Error response has correct structure', () => {",
+          "    const body = pm.response.json();",
+          "    pm.expect(body).to.have.property('error');",
+          "    pm.expect(body.error).to.have.property('code');",
+          "    pm.expect(body.error).to.have.property('message');",
+          "    pm.expect(body.error).to.have.property('request_id');",
+          "    pm.expect(body.error).to.have.property('timestamp');",
+          "  });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Group A - Customer Identity",
+      "description": "APIs for customer authentication, profile retrieval, and identity document management.",
+      "item": [
+        {
+          "name": "POST Auth Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Response contains access_token', () => {",
+                  "  pm.expect(body).to.have.property('access_token');",
+                  "  pm.expect(body.access_token).to.be.a('string');",
+                  "});",
+                  "pm.test('Response contains token_type Bearer', () => {",
+                  "  pm.expect(body.token_type).to.eql('Bearer');",
+                  "});",
+                  "pm.test('Response contains expires_in', () => {",
+                  "  pm.expect(body.expires_in).to.be.a('number');",
+                  "});",
+                  "if (body.access_token) {",
+                  "  pm.variables.set('access_token', body.access_token);",
+                  "  const expiresAt = Math.floor(Date.now() / 1000) + body.expires_in;",
+                  "  pm.variables.set('token_expires_at', expiresAt.toString());",
+                  "}",
+                  "if (body.refresh_token) {",
+                  "  pm.variables.set('refresh_token', body.refresh_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" },
+              { "key": "X-Idempotency-Key", "value": "{{idempotency_key}}" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "client_credentials", "type": "text" },
+                { "key": "client_id", "value": "{{client_id}}", "type": "text" },
+                { "key": "client_secret", "value": "{{client_secret}}", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}/auth/token", "host": ["{{base_url}}"], "path": ["auth", "token"] },
+            "description": "Obtain an OAuth 2.0 access token using the client credentials grant."
+          },
+          "response": [
+            {
+              "name": "Token Success",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "X-RateLimit-Limit", "value": "30" },
+                { "key": "X-RateLimit-Remaining", "value": "29" },
+                { "key": "X-RateLimit-Reset", "value": "1718893800" },
+                { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload" },
+                { "key": "X-Content-Type-Options", "value": "nosniff" },
+                { "key": "X-Frame-Options", "value": "DENY" },
+                { "key": "Content-Security-Policy", "value": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'" }
+              ],
+              "body": "{\n  \"access_token\": \"eyJhbGciOiJSUzI1NiIsImtpZCI6InNtYXJ0YmFuay1hdXRoLWtleS0xIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhMWIyYzNkNC1lNWY2LTc4OTAtYWJjZC1lZjEyMzQ1Njc4OTAiLCJpc3MiOiJodHRwczovL2F1dGguc21hcnRiYW5rLmFpLyIsImF1ZCI6Imh0dHBzOi8vYXBpLnNtYXJ0YmFuay5haSIsImV4cCI6MTcxODg5NzQwMCwiaWF0IjoxNzE4ODkzODAwLCJzY29wZSI6ImN1c3RvbWVyczpyZWFkIGFjY291bnRzOnJlYWQgY2FyZHM6d3JpdGUgZGlnaXRhbDp3cml0ZSBub3RpZmljYXRpb25zOndyaXRlIn0.fakesignature\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 3600,\n  \"scope\": \"customers:read accounts:read cards:write digital:write notifications:write\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "GET Customer by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Customer profile contains masked PII', () => {",
+                  "  pm.expect(body).to.have.property('first_name');",
+                  "  pm.expect(body.first_name).to.match(/^[A-Za-z]+\\*+$/);",
+                  "  pm.expect(body).to.have.property('phone');",
+                  "  pm.expect(body.phone).to.include('***');",
+                  "});",
+                  "pm.test('Response has required fields', () => {",
+                  "  pm.expect(body).to.have.property('id');",
+                  "  pm.expect(body).to.have.property('status');",
+                  "  pm.expect(body).to.have.property('kyc_level');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{access_token}}" } ],
+            "url": { "raw": "{{base_url}}/customers/{{customer_id}}", "host": ["{{base_url}}"], "path": ["customers", "{{customer_id}}"] },
+            "description": "Fetch the customer profile with masked PII."
+          },
+          "response": [
+            {
+              "name": "Customer Profile Retrieved",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "X-RateLimit-Limit", "value": "60" },
+                { "key": "X-RateLimit-Remaining", "value": "59" }
+              ],
+              "body": "{\n  \"id\": \"f47ac10b-58cc-4372-a567-0e02b2c3d479\",\n  \"first_name\": \"Joh***\",\n  \"last_name\": \"S*****\",\n  \"email\": \"j***@smartbank.com\",\n  \"phone\": \"+1 (***) ***-5678\",\n  \"masked_national_id\": \"******1234\",\n  \"date_of_birth\": \"****-06-15\",\n  \"status\": \"active\",\n  \"address\": {\n    \"street\": \"***h Av***e\",\n    \"city\": \"Ne* Yo**\",\n    \"state\": \"N*\",\n    \"zip\": \"*****\",\n    \"country\": \"US\"\n  },\n  \"kyc_level\": \"enhanced\",\n  \"created_at\": \"2024-01-15T08:30:00Z\",\n  \"updated_at\": \"2026-06-19T12:00:00Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "PATCH Customer Identity",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Identity document update response has correct fields', () => {",
+                  "  pm.expect(body).to.have.property('id');",
+                  "  pm.expect(body).to.have.property('status');",
+                  "  pm.expect(body.status).to.be.oneOf(['pending_verification', 'verified', 'rejected']);",
+                  "  pm.expect(body).to.have.property('masked_document_number');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Idempotency-Key", "value": "{{idempotency_key}}" },
+              { "key": "X-Signature", "value": "MEQCIQCwzJx5...k7LdA==" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document_type\": \"passport\",\n  \"document_number\": \"AB1234567\",\n  \"issuing_country\": \"US\",\n  \"expiry_date\": \"2030-12-31\",\n  \"document_image_base64\": \"/9j/4AAQSkZJRg...\",\n  \"document_image_mime\": \"image/jpeg\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/customers/{{customer_id}}/identity", "host": ["{{base_url}}"], "path": ["customers", "{{customer_id}}", "identity"] },
+            "description": "Upload or update an identity document. The request body must be signed."
+          },
+          "response": [
+            {
+              "name": "Identity Updated",
+              "status": "OK",
+              "code": 200,
+              "header": [ { "key": "Content-Type", "value": "application/json" } ],
+              "body": "{\n  \"id\": \"d1e2f3a4-b5c6-7890-1234-567890abcdef\",\n  \"customer_id\": \"f47ac10b-58cc-4372-a567-0e02b2c3d479\",\n  \"document_type\": \"passport\",\n  \"masked_document_number\": \"*******4567\",\n  \"status\": \"pending_verification\",\n  \"updated_at\": \"2026-06-20T10:15:00Z\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Group B - Accounts",
+      "description": "APIs for account balance enquiries, statements, and freeze/unfreeze operations.",
+      "item": [
+        {
+          "name": "GET Account Balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Balance response has correct fields', () => {",
+                  "  pm.expect(body).to.have.property('account_id');",
+                  "  pm.expect(body).to.have.property('currency');",
+                  "  pm.expect(body).to.have.property('ledger_balance');",
+                  "  pm.expect(body).to.have.property('available_balance');",
+                  "  pm.expect(body).to.have.property('status');",
+                  "  pm.expect(body.currency).to.match(/^[A-Z]{3}$/);",
+                  "});",
+                  "pm.test('Available balance does not exceed ledger balance', () => {",
+                  "  pm.expect(body.available_balance).to.be.at.most(body.ledger_balance);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{access_token}}" } ],
+            "url": { "raw": "{{base_url}}/accounts/{{account_id}}/balance", "host": ["{{base_url}}"], "path": ["accounts", "{{account_id}}", "balance"] },
+            "description": "Get the real-time ledger and available balance for an account."
+          },
+          "response": [
+            {
+              "name": "Account Balance Retrieved",
+              "status": "OK",
+              "code": 200,
+              "header": [ { "key": "Content-Type", "value": "application/json" } ],
+              "body": "{\n  \"account_id\": \"b1c2d3e4-f5a6-7890-bcde-f123456789ab\",\n  \"currency\": \"USD\",\n  \"ledger_balance\": 15240.75,\n  \"available_balance\": 14240.75,\n  \"credit_limit\": 5000.00,\n  \"status\": \"active\",\n  \"updated_at\": \"2026-06-20T14:30:00.000Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "GET Account Statement",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "if (pm.request.url.query.get('format') !== 'pdf') {",
+                  "  const body = pm.response.json();",
+                  "  pm.test('Statement response has required fields', () => {",
+                  "    pm.expect(body).to.have.property('account_id');",
+                  "    pm.expect(body).to.have.property('transactions');",
+                  "    pm.expect(body).to.have.property('page');",
+                  "    pm.expect(body).to.have.property('total_count');",
+                  "    pm.expect(body.transactions).to.be.an('array');",
+                  "  });",
+                  "  if (body.transactions && body.transactions.length > 0) {",
+                  "    pm.test('First transaction has required fields', () => {",
+                  "      const txn = body.transactions[0];",
+                  "      pm.expect(txn).to.have.property('id');",
+                  "      pm.expect(txn).to.have.property('type');",
+                  "      pm.expect(txn).to.have.property('amount');",
+                  "      pm.expect(txn).to.have.property('booking_date');",
+                  "      pm.expect(txn).to.have.property('status');",
+                  "    });",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{access_token}}" } ],
+            "url": {
+              "raw": "{{base_url}}/accounts/{{account_id}}/statement?from={{statement_from}}&to={{statement_to}}&format=json&page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["accounts", "{{account_id}}", "statement"],
+              "query": [
+                { "key": "from", "value": "{{statement_from}}" },
+                { "key": "to", "value": "{{statement_to}}" },
+                { "key": "format", "value": "json" },
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "20" }
+              ]
+            },
+            "description": "Get a paginated account statement for a date range in JSON or PDF format."
+          },
+          "response": [
+            {
+              "name": "Statement Retrieved (JSON)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "X-Total-Count", "value": "156" },
+                { "key": "X-Page", "value": "1" },
+                { "key": "X-Page-Size", "value": "20" }
+              ],
+              "body": "{\n  \"account_id\": \"b1c2d3e4-f5a6-7890-bcde-f123456789ab\",\n  \"from\": \"2026-01-01\",\n  \"to\": \"2026-06-20\",\n  \"opening_balance\": 5000.00,\n  \"closing_balance\": 15240.75,\n  \"currency\": \"USD\",\n  \"transactions\": [\n    {\n      \"id\": \"t1a2b3c4-d5e6-7890-abcd-ef1234567890\",\n      \"type\": \"debit\",\n      \"amount\": 250.00,\n      \"currency\": \"USD\",\n      \"description\": \"Amazon.com purchase\",\n      \"reference\": \"TXN-2026-00012345\",\n      \"booking_date\": \"2026-06-18\",\n      \"value_date\": \"2026-06-19\",\n      \"status\": \"posted\",\n      \"merchant_name\": \"Amazon.com\",\n      \"merchant_category\": \"Electronic Shopping\",\n      \"running_balance\": 14240.75\n    },\n    {\n      \"id\": \"t2b3c4d5-e6f7-8901-abcd-ef1234567891\",\n      \"type\": \"credit\",\n      \"amount\": 3000.00,\n      \"currency\": \"USD\",\n      \"description\": \"Salary deposit\",\n      \"reference\": \"TXN-2026-00012346\",\n      \"booking_date\": \"2026-06-15\",\n      \"value_date\": \"2026-06-15\",\n      \"status\": \"posted\",\n      \"running_balance\": 15240.75\n    }\n  ],\n  \"page\": 1,\n  \"page_size\": 20,\n  \"total_count\": 156,\n  \"generated_at\": \"2026-06-20T14:35:00Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST Freeze Account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Freeze response has correct fields', () => {",
+                  "  pm.expect(body).to.have.property('account_id');",
+                  "  pm.expect(body).to.have.property('status');",
+                  "  pm.expect(body).to.have.property('action');",
+                  "  pm.expect(body).to.have.property('timestamp');",
+                  "  pm.expect(body.status).to.be.oneOf(['frozen', 'active']);",
+                  "  pm.expect(body.action).to.be.oneOf(['freeze', 'unfreeze']);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Idempotency-Key", "value": "{{idempotency_key}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"freeze\",\n  \"reason\": \"Customer reported lost card\",\n  \"initiated_by\": \"customer_self_service\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/accounts/{{account_id}}/freeze", "host": ["{{base_url}}"], "path": ["accounts", "{{account_id}}", "freeze"] },
+            "description": "Freeze or unfreeze an account. Frozen accounts reject all debit transactions."
+          },
+          "response": [
+            {
+              "name": "Account Frozen",
+              "status": "OK",
+              "code": 200,
+              "header": [ { "key": "Content-Type", "value": "application/json" } ],
+              "body": "{\n  \"account_id\": \"b1c2d3e4-f5a6-7890-bcde-f123456789ab\",\n  \"status\": \"frozen\",\n  \"action\": \"freeze\",\n  \"reason\": \"Customer reported lost card\",\n  \"timestamp\": \"2026-06-20T15:00:00Z\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Group C - Cards",
+      "description": "APIs for card lifecycle management: activation, PIN generation, block, and unblock with OTP. All calls require mTLS.",
+      "item": [
+        {
+          "name": "POST Activate Card",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Card activation response has correct fields', () => {",
+                  "  pm.expect(body).to.have.property('card_id');",
+                  "  pm.expect(body).to.have.property('status');",
+                  "  pm.expect(body).to.have.property('activated_at');",
+                  "  pm.expect(body.status).to.eql('active');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Idempotency-Key", "value": "{{idempotency_key}}" },
+              { "key": "X-Signature", "value": "MEQCIQCwzJx5...k7LdA==" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"card_last_four\": \"1234\",\n  \"cvv2\": \"789\",\n  \"expiry_date\": \"12/28\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/cards/{{card_id}}/activate", "host": ["{{base_url}}"], "path": ["cards", "{{card_id}}", "activate"] },
+            "description": "Activate a card by verifying the last four digits, CVV2, and expiry date. Requires mTLS."
+          },
+          "response": [
+            {
+              "name": "Card Activated",
+              "status": "OK",
+              "code": 200,
+              "header": [ { "key": "Content-Type", "value": "application/json" } ],
+              "body": "{\n  \"card_id\": \"c1d2e3f4-a5b6-7890-cdef-123456789abc\",\n  \"status\": \"active\",\n  \"activated_at\": \"2026-06-20T16:00:00Z\",\n  \"message\": \"Card activated. You may now use it for ATM withdrawals and POS purchases.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST Generate Card PIN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('PIN generation response has correct fields', () => {",
+                  "  pm.expect(body).to.have.property('card_id');",
+                  "  pm.expect(body).to.have.property('pin_reference');",
+                  "  pm.expect(body).to.have.property('status');",
+                  "  pm.expect(body).to.have.property('delivery_method');",
+                  "  pm.expect(body.status).to.eql('generated');",
+                  "});",
+                  "pm.test('PIN reference starts with PIN-', () => {",
+                  "  pm.expect(body.pin_reference).to.match(/^PIN-/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Idempotency-Key", "value": "{{idempotency_key}}" },
+              { "key": "X-Signature", "value": "MEQCIQCwzJx5...k7LdA==" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delivery_method\": \"mail\",\n  \"reason\": \"New card issuance - initial PIN generation\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/cards/{{card_id}}/pin/generate", "host": ["{{base_url}}"], "path": ["cards", "{{card_id}}", "pin", "generate"] },
+            "description": "Generate a new card PIN via HSM. PIN is delivered out-of-band. Requires mTLS."
+          },
+          "response": [
+            {
+              "name": "PIN Generated",
+              "status": "OK",
+              "code": 200,
+              "header": [ { "key": "Content-Type", "value": "application/json" } ],
+              "body": "{\n  \"card_id\": \"c1d2e3f4-a5b6-7890-cdef-123456789abc\",\n  \"pin_reference\": \"PIN-2026-00098765\",\n  \"status\": \"generated\",\n  \"delivery_method\": \"mail\",\n  \"estimated_delivery\": \"2026-06-25\",\n  \"message\": \"PIN has been securely generated by HSM. Delivery in progress.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST Block Card",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Card block response has correct fields', () => {",
+                  "  pm.expect(body).to.have.property('card_id');",
+                  "  pm.expect(body).to.have.property('status');",
+                  "  pm.expect(body).to.have.property('blocked_at');",
+                  "  pm.expect(body).to.have.property('network_status');",
+                  "  pm.expect(body.status).to.eql('blocked');",
+                  "});",
+                  "pm.test('Block propagated to network', () => {",
+                  "  pm.expect(body.network_status).to.eql('propagated');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Idempotency-Key", "value": "{{idempotency_key}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Card lost / stolen\",\n  \"reason_code\": \"lost\",\n  \"reported_by\": \"customer_self_service\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/cards/{{card_id}}/block", "host": ["{{base_url}}"], "path": ["cards", "{{card_id}}", "block"] },
+            "description": "Instantly block a card. The block is propagated to Visa/Mastercard in real time. Requires mTLS."
+          },
+          "response": [
+            {
+              "name": "Card Blocked",
+              "status": "OK",
+              "code": 200,
+              "header": [ { "key": "Content-Type", "value": "application/json" } ],
+              "body": "{\n  \"card_id\": \"c1d2e3f4-a5b6-7890-cdef-123456789abc\",\n  \"status\": \"blocked\",\n  \"blocked_at\": \"2026-06-20T17:00:00Z\",\n  \"network_status\": \"propagated\",\n  \"message\": \"Card blocked. The block has been propagated to the card network.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST Unblock Card",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Card unblock response has correct fields', () => {",
+                  "  pm.expect(body).to.have.property('card_id');",
+                  "  pm.expect(body).to.have.property('status');",
+                  "  pm.expect(body).to.have.property('unblocked_at');",
+                  "  pm.expect(body.status).to.eql('active');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Idempotency-Key", "value": "{{idempotency_key}}" },
+              { "key": "X-Signature", "value": "MEQCIQCwzJx5...k7LdA==" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otp\": \"{{otp_code}}\",\n  \"otp_reference\": \"{{otp_reference}}\",\n  \"reason\": \"Card found - requesting unblock\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/cards/{{card_id}}/unblock", "host": ["{{base_url}}"], "path": ["cards", "{{card_id}}", "unblock"] },
+            "description": "Unblock a card using a valid OTP sent to the customer's registered mobile number. Requires mTLS."
+          },
+          "response": [
+            {
+              "name": "Card Unblocked",
+              "status": "OK",
+              "code": 200,
+              "header": [ { "key": "Content-Type", "value": "application/json" } ],
+              "body": "{\n  \"card_id\": \"c1d2e3f4-a5b6-7890-cdef-123456789abc\",\n  \"status\": \"active\",\n  \"unblocked_at\": \"2026-06-20T17:30:00Z\",\n  \"message\": \"Card unblocked successfully.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Group D - Digital Banking",
+      "description": "APIs for internet banking access recovery and mobile device binding.",
+      "item": [
+        {
+          "name": "POST Reset Internet Banking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Reset response has correct fields', () => {",
+                  "  pm.expect(body).to.have.property('reset_request_id');",
+                  "  pm.expect(body).to.have.property('status');",
+                  "  pm.expect(body).to.have.property('verification_channel');",
+                  "  pm.expect(body).to.have.property('expires_at');",
+                  "  pm.expect(body.status).to.eql('initiated');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Idempotency-Key", "value": "{{idempotency_key}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"verification_method\": \"email_otp\",\n  \"email\": \"customer@example.com\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/digital/internet/reset", "host": ["{{base_url}}"], "path": ["digital", "internet", "reset"] },
+            "description": "Initiate an internet banking access recovery flow. A verification token is sent to the registered email."
+          },
+          "response": [
+            {
+              "name": "Reset Initiated",
+              "status": "OK",
+              "code": 200,
+              "header": [ { "key": "Content-Type", "value": "application/json" } ],
+              "body": "{\n  \"reset_request_id\": \"r1e2s3e4-t5r6-7890-abcd-ef1234567890\",\n  \"status\": \"initiated\",\n  \"verification_channel\": \"email\",\n  \"message\": \"A verification link has been sent to your registered email address.\",\n  \"expires_at\": \"2026-06-20T17:00:00Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST Activate Mobile Banking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Mobile activation response has correct fields', () => {",
+                  "  pm.expect(body).to.have.property('device_id');",
+                  "  pm.expect(body).to.have.property('status');",
+                  "  pm.expect(body).to.have.property('bound_at');",
+                  "  pm.expect(body.status).to.eql('active');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Idempotency-Key", "value": "{{idempotency_key}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"device_fingerprint\": \"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6\",\n  \"device_name\": \"John's iPhone 16 Pro\",\n  \"platform\": \"ios\",\n  \"platform_version\": \"19.5\",\n  \"fcm_token\": \"fcm-abc123-def456...\",\n  \"otp\": \"729104\",\n  \"otp_reference\": \"OTP-REF-DEV-789XYZ\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/digital/mobile/activate", "host": ["{{base_url}}"], "path": ["digital", "mobile", "activate"] },
+            "description": "Register and bind a new mobile device for banking using a device fingerprint and OTP."
+          },
+          "response": [
+            {
+              "name": "Mobile Banking Activated",
+              "status": "OK",
+              "code": 200,
+              "header": [ { "key": "Content-Type", "value": "application/json" } ],
+              "body": "{\n  \"device_id\": \"d1e2v3i4-c5e6-7890-abcd-ef1234567890\",\n  \"status\": \"active\",\n  \"bound_at\": \"2026-06-20T18:00:00Z\",\n  \"message\": \"Device registered and bound successfully. You may now use mobile banking.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Group E - Notifications",
+      "description": "APIs for sending transactional notifications via email, SMS, and push.",
+      "item": [
+        {
+          "name": "POST Send Email Notification",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => { pm.response.to.have.status(202); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Notification response has correct fields', () => {",
+                  "  pm.expect(body).to.have.property('notification_id');",
+                  "  pm.expect(body).to.have.property('status');",
+                  "  pm.expect(body).to.have.property('channel');",
+                  "  pm.expect(body).to.have.property('queued_at');",
+                  "  pm.expect(body.status).to.eql('queued');",
+                  "  pm.expect(body.channel).to.eql('email');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Idempotency-Key", "value": "{{idempotency_key}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to\": \"customer@example.com\",\n  \"cc\": [\"advisor@smartbank.com\"],\n  \"subject\": \"Your monthly statement is ready\",\n  \"template_id\": \"statement_ready_v2\",\n  \"template_data\": {\n    \"customer_name\": \"John Smith\",\n    \"statement_period\": \"June 2026\",\n    \"account_number\": \"****1234\"\n  },\n  \"attachments\": [\n    {\n      \"filename\": \"statement_June_2026.pdf\",\n      \"content_base64\": \"JVBERi0xLjQK...\",\n      \"mime_type\": \"application/pdf\"\n    }\n  ],\n  \"priority\": \"normal\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/notifications/email", "host": ["{{base_url}}"], "path": ["notifications", "email"] },
+            "description": "Send a transactional email notification."
+          },
+          "response": [
+            {
+              "name": "Email Queued",
+              "status": "Accepted",
+              "code": 202,
+              "header": [ { "key": "Content-Type", "value": "application/json" } ],
+              "body": "{\n  \"notification_id\": \"n1o2t3i4-f5i6-7890-abcd-ef1234567890\",\n  \"status\": \"queued\",\n  \"channel\": \"email\",\n  \"queued_at\": \"2026-06-20T18:30:00Z\",\n  \"message\": \"Notification queued for delivery.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST Send SMS Notification",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => { pm.response.to.have.status(202); });",
+                  "const body = pm.response.json();",
+                  "pm.test('SMS notification response has correct fields', () => {",
+                  "  pm.expect(body).to.have.property('notification_id');",
+                  "  pm.expect(body).to.have.property('channel');",
+                  "  pm.expect(body.channel).to.eql('sms');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Idempotency-Key", "value": "{{idempotency_key}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to\": \"+12025551234\",\n  \"message\": \"Alert: A transaction of $250.00 was made at Amazon.com. If not you, reply BLOCK.\",\n  \"sender_id\": \"SmartBank\",\n  \"priority\": 3\n}"
+            },
+            "url": { "raw": "{{base_url}}/notifications/sms", "host": ["{{base_url}}"], "path": ["notifications", "sms"] },
+            "description": "Send a transactional SMS notification."
+          },
+          "response": [
+            {
+              "name": "SMS Queued",
+              "status": "Accepted",
+              "code": 202,
+              "header": [ { "key": "Content-Type", "value": "application/json" } ],
+              "body": "{\n  \"notification_id\": \"n2o3t4i5-f6i7-8901-abcd-ef1234567891\",\n  \"status\": \"queued\",\n  \"channel\": \"sms\",\n  \"queued_at\": \"2026-06-20T18:31:00Z\",\n  \"message\": \"Notification queued for delivery.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST Send Push Notification",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 202', () => { pm.response.to.have.status(202); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Push notification response has correct fields', () => {",
+                  "  pm.expect(body).to.have.property('notification_id');",
+                  "  pm.expect(body).to.have.property('channel');",
+                  "  pm.expect(body.channel).to.eql('push');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Idempotency-Key", "value": "{{idempotency_key}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_id\": \"{{device_id}}\",\n  \"title\": \"Transaction Alert\",\n  \"body\": \"A withdrawal of $500.00 was made at ATM 5th Ave.\",\n  \"data\": {\n    \"type\": \"withdrawal\",\n    \"amount\": 500.00,\n    \"merchant\": \"ATM_5TH_AVE\"\n  },\n  \"badge\": 1,\n  \"sound\": \"notification.wav\",\n  \"ttl\": 86400\n}"
+            },
+            "url": { "raw": "{{base_url}}/notifications/push", "host": ["{{base_url}}"], "path": ["notifications", "push"] },
+            "description": "Send a push notification to the customer's registered mobile device via FCM/APNs."
+          },
+          "response": [
+            {
+              "name": "Push Notification Queued",
+              "status": "Accepted",
+              "code": 202,
+              "header": [ { "key": "Content-Type", "value": "application/json" } ],
+              "body": "{\n  \"notification_id\": \"n3o4t5i6-f7i8-9012-abcd-ef1234567892\",\n  \"status\": \"queued\",\n  \"channel\": \"push\",\n  \"queued_at\": \"2026-06-20T18:32:00Z\",\n  \"message\": \"Notification queued for delivery.\"\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

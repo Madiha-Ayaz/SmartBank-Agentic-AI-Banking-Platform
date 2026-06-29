@@ -1,0 +1,2328 @@
+openapi: 3.1.0
+info:
+  title: SmartBank Open Banking API
+  description: |
+    Agentic AI Banking Platform — Open Banking RESTful API.
+    Implements FDX-compliant customer identity, account, card, digital banking,
+    and notification services with OAuth 2.0 + mTLS security.
+  version: 7.0.0
+  contact:
+    name: SmartBank Developer Relations
+    email: devrel@smartbank.ai
+    url: https://developers.smartbank.ai
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: https://api.smartbank.ai/v1
+    description: Production server
+    variables:
+      version:
+        default: v1
+  - url: https://staging-api.smartbank.ai/v1
+    description: Staging / sandbox server
+    variables:
+      version:
+        default: v1
+
+security:
+  - oauth2_client_credentials: []
+  - bearerAuth: []
+  - mTLS: []
+
+tags:
+  - name: Customer Identity
+    description: Customer profile, identity document management, and token acquisition
+  - name: Accounts
+    description: Balance enquiries, statements, and account controls
+  - name: Cards
+    description: Card lifecycle — activation, PIN, block / unblock
+  - name: Digital Banking
+    description: Internet banking and mobile device management
+  - name: Notifications
+    description: Outbound transactional notifications (email, SMS, push)
+
+paths:
+  # ────────────────────────────── Group A — Identity ──────────────────────────────
+  /v1/auth/token:
+    post:
+      tags:
+        - Customer Identity
+      summary: OAuth 2.0 token endpoint
+      description: |
+        Obtain an access token using OAuth 2.0 client credentials grant
+        with optional PKCE (S256).  The token must be presented as a
+        Bearer token in subsequent calls.
+      operationId: authToken
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          description: Idempotency key to prevent duplicate token issuance
+          required: false
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - grant_type
+                - client_id
+                - client_secret
+              properties:
+                grant_type:
+                  type: string
+                  enum:
+                    - client_credentials
+                    - authorization_code
+                  example: client_credentials
+                client_id:
+                  type: string
+                  format: uuid
+                  example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                client_secret:
+                  type: string
+                  format: password
+                  example: supersecretclientsecret
+                code_verifier:
+                  type: string
+                  description: PKCE code verifier (required when grant_type=authorization_code)
+                  example: dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+                code:
+                  type: string
+                  description: Authorization code (required when grant_type=authorization_code)
+                redirect_uri:
+                  type: string
+                  format: uri
+                  description: Redirect URI (required when grant_type=authorization_code)
+      responses:
+        '200':
+          description: Token issued successfully
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+            Strict-Transport-Security:
+              $ref: '#/components/headers/HSTS'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/XContentTypeOptions'
+            X-Frame-Options:
+              $ref: '#/components/headers/XFrameOptions'
+            Content-Security-Policy:
+              $ref: '#/components/headers/CSP'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      x-rate-limit:
+        limit: 100
+        period: 1 minute
+
+  /v1/customers/{id}:
+    get:
+      tags:
+        - Customer Identity
+      summary: Fetch customer profile
+      description: |
+        Returns the customer profile with masked personally identifiable
+        information (PII).  Only the last four digits of identity documents
+        and phone numbers are revealed.
+      operationId: getCustomer
+      security:
+        - oauth2_client_credentials: [customers:read]
+          bearerAuth: []
+          mTLS: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: f47ac10b-58cc-4372-a567-0e02b2c3d479
+        - name: X-Idempotency-Key
+          in: header
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Customer profile (PII masked)
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+            Strict-Transport-Security:
+              $ref: '#/components/headers/HSTS'
+            X-Content-Type-Options:
+              $ref: '#/components/headers/XContentTypeOptions'
+            X-Frame-Options:
+              $ref: '#/components/headers/XFrameOptions'
+            Content-Security-Policy:
+              $ref: '#/components/headers/CSP'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/customers/{id}/identity:
+    patch:
+      tags:
+        - Customer Identity
+      summary: Update identity document
+      description: |
+        Update or re-upload a verified identity document (passport, driving
+        licence, national ID).  The document image is base-64 encoded and
+        must be signed with the customer's private key for non-repudiation.
+      operationId: updateIdentity
+      security:
+        - oauth2_client_credentials: [customers:write]
+          bearerAuth: []
+          mTLS: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: f47ac10b-58cc-4372-a567-0e02b2c3d479
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        - name: X-Signature
+          in: header
+          description: Base64-encoded RSA-SHA256 signature of the request body
+          required: true
+          schema:
+            type: string
+          example: MEQCIQCwzJx5...k7LdA==
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityDocumentUpdate'
+      responses:
+        '200':
+          description: Identity document updated
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityDocumentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  # ────────────────────────────── Group B — Accounts ──────────────────────────────
+  /v1/accounts/{id}/balance:
+    get:
+      tags:
+        - Accounts
+      summary: Real-time account balance
+      description: |
+        Returns the current ledger and available balance for the account.
+        Balances are fetched from the core banking system in real time.
+      operationId: getAccountBalance
+      security:
+        - oauth2_client_credentials: [accounts:read]
+          bearerAuth: []
+          mTLS: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: b1c2d3e4-f5a6-7890-bcde-f123456789ab
+        - name: X-Idempotency-Key
+          in: header
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Account balance
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountBalance'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/accounts/{id}/statement:
+    get:
+      tags:
+        - Accounts
+      summary: Account statement
+      description: |
+        Retrieve a paginated transaction statement for the account within
+        a date range.  Supports JSON and PDF output formats.
+      operationId: getAccountStatement
+      security:
+        - oauth2_client_credentials: [accounts:read]
+          bearerAuth: []
+          mTLS: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: b1c2d3e4-f5a6-7890-bcde-f123456789ab
+        - name: from
+          in: query
+          description: Start date (inclusive)
+          required: true
+          schema:
+            type: string
+            format: date
+          example: '2026-01-01'
+        - name: to
+          in: query
+          description: End date (inclusive)
+          required: true
+          schema:
+            type: string
+            format: date
+          example: '2026-06-20'
+        - name: format
+          in: query
+          description: Response format
+          required: false
+          schema:
+            type: string
+            enum:
+              - json
+              - pdf
+            default: json
+        - name: page
+          in: query
+          description: Page number (1-indexed)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          description: Items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: X-Idempotency-Key
+          in: header
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Account statement (JSON)
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+            X-Total-Count:
+              description: Total number of transactions matching the filter
+              schema:
+                type: integer
+            X-Page:
+              description: Current page number
+              schema:
+                type: integer
+            X-Page-Size:
+              description: Items per page
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountStatement'
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+                description: Binary PDF document of the statement
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '416':
+          $ref: '#/components/responses/RangeNotSatisfiable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/accounts/{id}/freeze:
+    post:
+      tags:
+        - Accounts
+      summary: Freeze / unfreeze account
+      description: |
+        Freeze or unfreeze the specified account.  Frozen accounts reject
+        all debit transactions.  Freeze reasons are audited.
+      operationId: toggleAccountFreeze
+      security:
+        - oauth2_client_credentials: [accounts:write]
+          bearerAuth: []
+          mTLS: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: b1c2d3e4-f5a6-7890-bcde-f123456789ab
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FreezeRequest'
+      responses:
+        '200':
+          description: Freeze status updated
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FreezeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  # ────────────────────────────── Group C — Cards ──────────────────────────────
+  /v1/cards/{id}/activate:
+    post:
+      tags:
+        - Cards
+      summary: Activate ATM / debit card
+      description: |
+        Activate a newly issued card.  The activation request must be
+        signed and sent over an mTLS connection.  The last four digits of
+        the card number are verified together with the CVV2.
+      operationId: activateCard
+      security:
+        - oauth2_client_credentials: [cards:write]
+          bearerAuth: []
+          mTLS: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: c1d2e3f4-a5b6-7890-cdef-123456789abc
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CardActivateRequest'
+      responses:
+        '200':
+          description: Card activated successfully
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardActivateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/cards/{id}/pin/generate:
+    post:
+      tags:
+        - Cards
+      summary: Generate secure card PIN
+      description: |
+        Generate a new PIN for the card using an HSM-backed key derivation
+        function.  The PIN is never transmitted in plaintext — only a
+        PIN mailer reference is returned.  Requires mTLS.
+      operationId: generatePin
+      security:
+        - oauth2_client_credentials: [cards:write]
+          bearerAuth: []
+          mTLS: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: c1d2e3f4-a5b6-7890-cdef-123456789abc
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PinGenerateRequest'
+      responses:
+        '200':
+          description: PIN generation initiated. PIN delivered out-of-band.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PinGenerateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/cards/{id}/block:
+    post:
+      tags:
+        - Cards
+      summary: Instant card block
+      description: |
+        Immediately block a card to prevent any further financial
+        transactions.  The block is propagated to the card network
+        (Visa / Mastercard) in real time.  Requires mTLS.
+      operationId: blockCard
+      security:
+        - oauth2_client_credentials: [cards:write]
+          bearerAuth: []
+          mTLS: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: c1d2e3f4-a5b6-7890-cdef-123456789abc
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlockCardRequest'
+      responses:
+        '200':
+          description: Card blocked successfully
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockCardResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/cards/{id}/unblock:
+    post:
+      tags:
+        - Cards
+      summary: Unblock card with OTP
+      description: |
+        Unblock a previously blocked card.  The request must include a
+        valid OTP sent to the customer's registered mobile number.
+        Requires mTLS.
+      operationId: unblockCard
+      security:
+        - oauth2_client_credentials: [cards:write]
+          bearerAuth: []
+          mTLS: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: c1d2e3f4-a5b6-7890-cdef-123456789abc
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnblockCardRequest'
+      responses:
+        '200':
+          description: Card unblocked successfully
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnblockCardResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  # ────────────────────────────── Group D — Digital Banking ──────────────────────
+  /v1/digital/internet/reset:
+    post:
+      tags:
+        - Digital Banking
+      summary: Reset internet banking access
+      description: |
+        Initiate a full internet banking credential reset.  A reset token
+        is sent to the customer's verified email.  The customer must
+        complete identity verification before proceeding.
+      operationId: resetInternetBanking
+      security:
+        - oauth2_client_credentials: [digital:write]
+          bearerAuth: []
+          mTLS: []
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InternetResetRequest'
+      responses:
+        '200':
+          description: Reset initiated. Verification email sent.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternetResetResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/digital/mobile/activate:
+    post:
+      tags:
+        - Digital Banking
+      summary: Activate mobile banking device binding
+      description: |
+        Register and bind a new mobile device for banking.  The device
+        fingerprint and a one-time passcode are required.  After binding
+        the device can receive push notifications and execute transactions.
+      operationId: activateMobileBanking
+      security:
+        - oauth2_client_credentials: [digital:write]
+          bearerAuth: []
+          mTLS: []
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MobileActivateRequest'
+      responses:
+        '200':
+          description: Device bound successfully
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileActivateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  # ────────────────────────────── Group E — Notifications ────────────────────────
+  /v1/notifications/email:
+    post:
+      tags:
+        - Notifications
+      summary: Send transactional email
+      description: |
+        Dispatch a transactional email (e.g.  statement ready, payment
+        confirmation, security alert).  HTML content is sanitised before
+        delivery.
+      operationId: sendEmailNotification
+      security:
+        - oauth2_client_credentials: [notifications:write]
+          bearerAuth: []
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailNotificationRequest'
+      responses:
+        '202':
+          description: Email queued for delivery
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/notifications/sms:
+    post:
+      tags:
+        - Notifications
+      summary: Send SMS notification
+      description: |
+        Dispatch a transactional SMS message.  Messages are truncated to
+        160 characters for GSM-7 or 70 characters for UCS-2.
+      operationId: sendSmsNotification
+      security:
+        - oauth2_client_credentials: [notifications:write]
+          bearerAuth: []
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SmsNotificationRequest'
+      responses:
+        '202':
+          description: SMS queued for delivery
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/notifications/push:
+    post:
+      tags:
+        - Notifications
+      summary: Send push notification
+      description: |
+        Dispatch a push notification to the customer's registered mobile
+        device via FCM / APNs.  Supports both notification and data
+        payloads.
+      operationId: sendPushNotification
+      security:
+        - oauth2_client_credentials: [notifications:write]
+          bearerAuth: []
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PushNotificationRequest'
+      responses:
+        '202':
+          description: Push notification queued for delivery
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+components:
+  securitySchemes:
+    oauth2_client_credentials:
+      type: oauth2
+      description: OAuth 2.0 client credentials grant with optional PKCE
+      flows:
+        clientCredentials:
+          tokenUrl: https://api.smartbank.ai/v1/auth/token
+          scopes:
+            customers:read: Read customer profile
+            customers:write: Update customer identity documents
+            accounts:read: Read account balances and statements
+            accounts:write: Freeze / unfreeze accounts
+            cards:write: Activate, block, unblock cards and generate PIN
+            digital:write: Manage internet and mobile banking
+            notifications:write: Send transactional notifications
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT bearer token obtained from the token endpoint
+    mTLS:
+      type: mutualTLS
+      description: |
+        Mutual TLS (mTLS) is required for all Card group API calls.
+        The client certificate must be issued by the SmartBank CA.
+
+  headers:
+    HSTS:
+      description: HTTP Strict-Transport-Security
+      schema:
+        type: string
+        default: max-age=31536000; includeSubDomains; preload
+    XContentTypeOptions:
+      description: Prevents MIME type sniffing
+      schema:
+        type: string
+        default: nosniff
+    XFrameOptions:
+      description: Precludes clickjacking
+      schema:
+        type: string
+        default: DENY
+    CSP:
+      description: Content Security Policy
+      schema:
+        type: string
+        default: default-src 'none'; frame-ancestors 'none'; base-uri 'none'
+    RateLimitLimit:
+      description: Maximum requests allowed in the current window
+      schema:
+        type: integer
+    RateLimitRemaining:
+      description: Requests remaining in the current window
+      schema:
+        type: integer
+    RateLimitReset:
+      description: Unix timestamp when the rate-limit window resets
+      schema:
+        type: integer
+
+  schemas:
+    # ── Common ──────────────────────────────────────────────────────────────
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+              example: ACCOUNT_NOT_FOUND
+            message:
+              type: string
+              description: Human-readable error message
+              example: No account found with the given identifier
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                    example: id
+                  reason:
+                    type: string
+                    example: must be a valid UUID
+            request_id:
+              type: string
+              format: uuid
+              description: Correlates the error to server-side logs
+              example: a1b2c3d4-1234-5678-9abc-def012345678
+            timestamp:
+              type: string
+              format: date-time
+              example: '2026-06-20T14:30:00Z'
+
+    # ── Error codes ─────────────────────────────────────────────────────────
+    # 40 error codes enumerated as an enum for documentation purposes
+    ErrorCode:
+      type: string
+      enum:
+        - INVALID_REQUEST
+        - MISSING_REQUIRED_FIELD
+        - INVALID_FIELD_FORMAT
+        - UNSUPPORTED_MEDIA_TYPE
+        - INVALID_GRANT
+        - UNAUTHORIZED_CLIENT
+        - UNSUPPORTED_GRANT_TYPE
+        - INVALID_CLIENT
+        - INVALID_CLIENT_SECRET
+        - INVALID_CODE_VERIFIER
+        - INVALID_AUTHORIZATION_CODE
+        - EXPIRED_TOKEN
+        - INVALID_TOKEN
+        - INSUFFICIENT_SCOPE
+        - FORBIDDEN_OPERATION
+        - RESOURCE_NOT_FOUND
+        - ACCOUNT_NOT_FOUND
+        - CUSTOMER_NOT_FOUND
+        - CARD_NOT_FOUND
+        - IDENTITY_DOCUMENT_NOT_FOUND
+        - DEVICE_NOT_FOUND
+        - CONFLICT
+        - ACCOUNT_ALREADY_FROZEN
+        - ACCOUNT_NOT_FROZEN
+        - CARD_ALREADY_ACTIVE
+        - CARD_ALREADY_BLOCKED
+        - CARD_NOT_BLOCKED
+        - DEVICE_ALREADY_BOUND
+        - INVALID_OTP
+        - EXPIRED_OTP
+        - OTP_MAX_ATTEMPTS_EXCEEDED
+        - INVALID_SIGNATURE
+        - INVALID_IDENTITY_DOCUMENT
+        - UNPROCESSABLE_ENTITY
+        - IDEMPOTENCY_KEY_REUSED
+        - RATE_LIMIT_EXCEEDED
+        - QUOTA_EXCEEDED
+        - RANGE_NOT_SATISFIABLE
+        - INTERNAL_SERVER_ERROR
+        - SERVICE_UNAVAILABLE
+        - HSM_UNAVAILABLE
+        - THIRD_PARTY_TIMEOUT
+        - THIRD_PARTY_ERROR
+
+    # ── Token ───────────────────────────────────────────────────────────────
+    TokenResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+        - expires_in
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+          example: eyJhbGciOiJSUzI1NiIsImtpZCI6...
+        token_type:
+          type: string
+          enum:
+            - Bearer
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds
+          example: 3600
+        refresh_token:
+          type: string
+          description: Optional refresh token (only for authorization_code grant)
+          example: rT0k3nV4lUe...
+        scope:
+          type: string
+          description: Granted scopes
+          example: customers:read accounts:read
+
+    # ── Customer ────────────────────────────────────────────────────────────
+    CustomerProfile:
+      type: object
+      required:
+        - id
+        - first_name
+        - last_name
+        - email
+        - phone
+        - masked_national_id
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: f47ac10b-58cc-4372-a567-0e02b2c3d479
+        first_name:
+          type: string
+          description: Masked first name (first 3 chars + asterisks)
+          example: Joh***
+        last_name:
+          type: string
+          description: Masked last name (first char + asterisks)
+          example: S*****
+        email:
+          type: string
+          format: email
+          description: Masked email (domain visible, local part partially masked)
+          example: j***@smartbank.com
+        phone:
+          type: string
+          description: Masked phone number (last 4 digits visible)
+          example: +1 (***) ***-5678
+        masked_national_id:
+          type: string
+          description: Last 4 digits of national ID visible
+          example: '******1234'
+        date_of_birth:
+          type: string
+          format: date
+          description: Masked date of birth
+          example: '****-06-15'
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+            - suspended
+            - closed
+          example: active
+        address:
+          $ref: '#/components/schemas/MaskedAddress'
+        kyc_level:
+          type: string
+          enum:
+            - unverified
+            - basic
+            - enhanced
+            - full
+          example: enhanced
+        created_at:
+          type: string
+          format: date-time
+          example: '2024-01-15T08:30:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-06-19T12:00:00Z'
+
+    MaskedAddress:
+      type: object
+      properties:
+        street:
+          type: string
+          example: ***h Av***e
+        city:
+          type: string
+          example: Ne* Yo**
+        state:
+          type: string
+          example: N*
+        zip:
+          type: string
+          example: '*****'
+        country:
+          type: string
+          example: US
+
+    IdentityDocumentUpdate:
+      type: object
+      required:
+        - document_type
+        - document_number
+        - document_image_base64
+      properties:
+        document_type:
+          type: string
+          enum:
+            - passport
+            - driving_licence
+            - national_id
+            - residence_permit
+          example: passport
+        document_number:
+          type: string
+          description: Document number (will be masked on read)
+          example: AB1234567
+        issuing_country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+          example: US
+        expiry_date:
+          type: string
+          format: date
+          example: '2030-12-31'
+        document_image_base64:
+          type: string
+          description: Base64-encoded PNG or JPEG image of the document
+          example: /9j/4AAQSkZJRg...
+        document_image_mime:
+          type: string
+          enum:
+            - image/png
+            - image/jpeg
+          default: image/jpeg
+
+    IdentityDocumentResponse:
+      type: object
+      required:
+        - id
+        - customer_id
+        - document_type
+        - masked_document_number
+        - status
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: d1e2f3a4-b5c6-7890-1234-567890abcdef
+        customer_id:
+          type: string
+          format: uuid
+          example: f47ac10b-58cc-4372-a567-0e02b2c3d479
+        document_type:
+          type: string
+          example: passport
+        masked_document_number:
+          type: string
+          example: '*******4567'
+        status:
+          type: string
+          enum:
+            - pending_verification
+            - verified
+            - rejected
+          example: verified
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-06-20T10:15:00Z'
+
+    # ── Account ─────────────────────────────────────────────────────────────
+    AccountBalance:
+      type: object
+      required:
+        - account_id
+        - currency
+        - ledger_balance
+        - available_balance
+        - status
+        - updated_at
+      properties:
+        account_id:
+          type: string
+          format: uuid
+          example: b1c2d3e4-f5a6-7890-bcde-f123456789ab
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          example: USD
+        ledger_balance:
+          type: number
+          description: Book balance (includes pending transactions)
+          example: 15240.75
+        available_balance:
+          type: number
+          description: Balance available for withdrawal (excludes holds)
+          example: 14240.75
+        credit_limit:
+          type: number
+          description: Credit limit (for overdraft / credit accounts)
+          example: 5000.00
+        status:
+          type: string
+          enum:
+            - active
+            - frozen
+            - closed
+          example: active
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-06-20T14:30:00.000Z'
+
+    AccountStatement:
+      type: object
+      required:
+        - account_id
+        - from
+        - to
+        - transactions
+        - page
+        - page_size
+        - total_count
+      properties:
+        account_id:
+          type: string
+          format: uuid
+          example: b1c2d3e4-f5a6-7890-bcde-f123456789ab
+        from:
+          type: string
+          format: date
+          example: '2026-01-01'
+        to:
+          type: string
+          format: date
+          example: '2026-06-20'
+        opening_balance:
+          type: number
+          example: 5000.00
+        closing_balance:
+          type: number
+          example: 15240.75
+        currency:
+          type: string
+          example: USD
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 20
+        total_count:
+          type: integer
+          example: 156
+        generated_at:
+          type: string
+          format: date-time
+          example: '2026-06-20T14:35:00Z'
+
+    Transaction:
+      type: object
+      required:
+        - id
+        - type
+        - amount
+        - currency
+        - description
+        - booking_date
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: t1a2b3c4-d5e6-7890-abcd-ef1234567890
+        type:
+          type: string
+          enum:
+            - debit
+            - credit
+            - fee
+            - refund
+            - transfer
+            - interest
+          example: debit
+        amount:
+          type: number
+          example: 250.00
+        currency:
+          type: string
+          example: USD
+        description:
+          type: string
+          example: Amazon.com purchase
+        reference:
+          type: string
+          example: TXN-2026-00012345
+        booking_date:
+          type: string
+          format: date
+          example: '2026-06-18'
+        value_date:
+          type: string
+          format: date
+          example: '2026-06-19'
+        status:
+          type: string
+          enum:
+            - pending
+            - posted
+            - reversed
+            - failed
+          example: posted
+        merchant_name:
+          type: string
+          example: Amazon.com
+        merchant_category:
+          type: string
+          example: Electronic Shopping
+        running_balance:
+          type: number
+          example: 15240.75
+
+    FreezeRequest:
+      type: object
+      required:
+        - action
+        - reason
+      properties:
+        action:
+          type: string
+          enum:
+            - freeze
+            - unfreeze
+          example: freeze
+        reason:
+          type: string
+          maxLength: 500
+          example: Customer reported lost card
+        initiated_by:
+          type: string
+          description: Operator or system that initiated the freeze
+          example: customer_service_portal
+
+    FreezeResponse:
+      type: object
+      required:
+        - account_id
+        - status
+        - action
+        - timestamp
+      properties:
+        account_id:
+          type: string
+          format: uuid
+          example: b1c2d3e4-f5a6-7890-bcde-f123456789ab
+        status:
+          type: string
+          enum:
+            - frozen
+            - active
+          example: frozen
+        action:
+          type: string
+          example: freeze
+        reason:
+          type: string
+          example: Customer reported lost card
+        timestamp:
+          type: string
+          format: date-time
+          example: '2026-06-20T15:00:00Z'
+
+    # ── Card ────────────────────────────────────────────────────────────────
+    CardActivateRequest:
+      type: object
+      required:
+        - card_last_four
+        - cvv2
+        - expiry_date
+      properties:
+        card_last_four:
+          type: string
+          pattern: '^\d{4}$'
+          example: '1234'
+        cvv2:
+          type: string
+          pattern: '^\d{3}$'
+          example: '789'
+        expiry_date:
+          type: string
+          pattern: '^\d{2}/\d{2}$'
+          description: MM/YY format
+          example: '12/28'
+
+    CardActivateResponse:
+      type: object
+      required:
+        - card_id
+        - status
+        - activated_at
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          example: c1d2e3f4-a5b6-7890-cdef-123456789abc
+        status:
+          type: string
+          enum:
+            - active
+            - pending_activation
+          example: active
+        activated_at:
+          type: string
+          format: date-time
+          example: '2026-06-20T16:00:00Z'
+        message:
+          type: string
+          example: Card activated. You may now use it for ATM withdrawals and POS purchases.
+
+    PinGenerateRequest:
+      type: object
+      required:
+        - delivery_method
+      properties:
+        delivery_method:
+          type: string
+          enum:
+            - sms
+            - mail
+            - branch_pickup
+          example: mail
+        reason:
+          type: string
+          example: New card issuance — initial PIN generation
+
+    PinGenerateResponse:
+      type: object
+      required:
+        - card_id
+        - pin_reference
+        - status
+        - delivery_method
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          example: c1d2e3f4-a5b6-7890-cdef-123456789abc
+        pin_reference:
+          type: string
+          description: Reference number for PIN mailer tracking
+          example: PIN-2026-00098765
+        status:
+          type: string
+          enum:
+            - generated
+            - pending_hsm
+          example: generated
+        delivery_method:
+          type: string
+          example: mail
+        estimated_delivery:
+          type: string
+          format: date
+          example: '2026-06-25'
+        message:
+          type: string
+          example: PIN has been securely generated by HSM. Delivery in progress.
+
+    BlockCardRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          description: Reason for blocking the card
+          maxLength: 500
+          example: Card lost / stolen
+        reason_code:
+          type: string
+          enum:
+            - lost
+            - stolen
+            - damaged
+            - suspected_fraud
+            - account_closed
+            - other
+          example: lost
+        reported_by:
+          type: string
+          example: customer_self_service
+
+    BlockCardResponse:
+      type: object
+      required:
+        - card_id
+        - status
+        - blocked_at
+        - network_status
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          example: c1d2e3f4-a5b6-7890-cdef-123456789abc
+        status:
+          type: string
+          enum:
+            - blocked
+            - block_pending
+          example: blocked
+        blocked_at:
+          type: string
+          format: date-time
+          example: '2026-06-20T17:00:00Z'
+        network_status:
+          type: string
+          enum:
+            - propagated
+            - pending_propagation
+          example: propagated
+        message:
+          type: string
+          example: Card blocked. The block has been propagated to the card network.
+
+    UnblockCardRequest:
+      type: object
+      required:
+        - otp
+        - otp_reference
+      properties:
+        otp:
+          type: string
+          description: One-time passcode sent to registered mobile
+          pattern: '^\d{6}$'
+          example: '482931'
+        otp_reference:
+          type: string
+          description: Reference ID of the OTP sent
+          example: OTP-REF-ABC123
+        reason:
+          type: string
+          maxLength: 500
+          example: Card found — requesting unblock
+
+    UnblockCardResponse:
+      type: object
+      required:
+        - card_id
+        - status
+        - unblocked_at
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          example: c1d2e3f4-a5b6-7890-cdef-123456789abc
+        status:
+          type: string
+          enum:
+            - active
+            - unblock_pending
+          example: active
+        unblocked_at:
+          type: string
+          format: date-time
+          example: '2026-06-20T17:30:00Z'
+        message:
+          type: string
+          example: Card unblocked successfully.
+
+    # ── Digital Banking ─────────────────────────────────────────────────────
+    InternetResetRequest:
+      type: object
+      required:
+        - customer_id
+        - verification_method
+      properties:
+        customer_id:
+          type: string
+          format: uuid
+          example: f47ac10b-58cc-4372-a567-0e02b2c3d479
+        verification_method:
+          type: string
+          enum:
+            - email_otp
+            - sms_otp
+            - security_questions
+            - video_verification
+          example: email_otp
+        email:
+          type: string
+          format: email
+          description: Required when verification_method is email_otp
+          example: customer@example.com
+
+    InternetResetResponse:
+      type: object
+      required:
+        - reset_request_id
+        - status
+        - verification_channel
+        - expires_at
+      properties:
+        reset_request_id:
+          type: string
+          format: uuid
+          example: r1e2s3e4-t5r6-7890-abcd-ef1234567890
+        status:
+          type: string
+          enum:
+            - initiated
+            - verified
+            - completed
+            - expired
+          example: initiated
+        verification_channel:
+          type: string
+          example: email
+        message:
+          type: string
+          example: A verification link has been sent to your registered email address.
+        expires_at:
+          type: string
+          format: date-time
+          example: '2026-06-20T17:00:00Z'
+
+    MobileActivateRequest:
+      type: object
+      required:
+        - customer_id
+        - device_fingerprint
+        - device_name
+        - platform
+        - otp
+        - otp_reference
+      properties:
+        customer_id:
+          type: string
+          format: uuid
+          example: f47ac10b-58cc-4372-a567-0e02b2c3d479
+        device_fingerprint:
+          type: string
+          description: Unique fingerprint derived from device hardware and OS attributes
+          example: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
+        device_name:
+          type: string
+          example: John's iPhone 16 Pro
+        platform:
+          type: string
+          enum:
+            - ios
+            - android
+          example: ios
+        platform_version:
+          type: string
+          example: '19.5'
+        fcm_token:
+          type: string
+          description: Firebase Cloud Messaging token for push notifications
+          example: fcm-abc123-def456...
+        otp:
+          type: string
+          pattern: '^\d{6}$'
+          example: '729104'
+        otp_reference:
+          type: string
+          example: OTP-REF-DEV-789XYZ
+
+    MobileActivateResponse:
+      type: object
+      required:
+        - device_id
+        - status
+        - bound_at
+      properties:
+        device_id:
+          type: string
+          format: uuid
+          example: d1e2v3i4-c5e6-7890-abcd-ef1234567890
+        status:
+          type: string
+          enum:
+            - active
+            - pending_verification
+          example: active
+        bound_at:
+          type: string
+          format: date-time
+          example: '2026-06-20T18:00:00Z'
+        message:
+          type: string
+          example: Device registered and bound successfully. You may now use mobile banking.
+
+    # ── Notifications ───────────────────────────────────────────────────────
+    EmailNotificationRequest:
+      type: object
+      required:
+        - to
+        - template_id
+        - subject
+      properties:
+        to:
+          type: string
+          format: email
+          example: customer@example.com
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+          example:
+            - advisor@smartbank.com
+        bcc:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+          example: Your monthly statement is ready
+        template_id:
+          type: string
+          description: Email template identifier
+          example: statement_ready_v2
+        template_data:
+          type: object
+          description: Key-value pairs for template rendering
+          additionalProperties:
+            type: string
+          example:
+            customer_name: John Smith
+            statement_period: June 2026
+            account_number: '****1234'
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+        priority:
+          type: string
+          enum:
+            - low
+            - normal
+            - high
+            - urgent
+          default: normal
+
+    SmsNotificationRequest:
+      type: object
+      required:
+        - to
+        - message
+      properties:
+        to:
+          type: string
+          description: E.164 formatted phone number
+          pattern: '^\+[1-9]\d{1,14}$'
+          example: '+12025551234'
+        message:
+          type: string
+          maxLength: 160
+          example: 'Alert: A transaction of $250.00 was made at Amazon.com. If not you, reply BLOCK.'
+        sender_id:
+          type: string
+          maxLength: 11
+          example: SmartBank
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 3
+
+    PushNotificationRequest:
+      type: object
+      required:
+        - device_id
+        - title
+        - body
+      properties:
+        device_id:
+          type: string
+          format: uuid
+          example: d1e2v3i4-c5e6-7890-abcd-ef1234567890
+        title:
+          type: string
+          maxLength: 100
+          example: Transaction Alert
+        body:
+          type: string
+          maxLength: 500
+          example: A withdrawal of $500.00 was made at ATM 5th Ave.
+        data:
+          type: object
+          description: Custom data payload delivered to the application
+          additionalProperties:
+            type:
+              - string
+              - number
+              - boolean
+          example:
+            type: withdrawal
+            amount: 500.00
+            merchant: ATM_5TH_AVE
+        badge:
+          type: integer
+          example: 1
+        sound:
+          type: string
+          default: default
+          example: notification.wav
+        ttl:
+          type: integer
+          description: Time-to-live in seconds
+          example: 86400
+
+    NotificationResponse:
+      type: object
+      required:
+        - notification_id
+        - status
+        - channel
+        - queued_at
+      properties:
+        notification_id:
+          type: string
+          format: uuid
+          example: n1o2t3i4-f5i6-7890-abcd-ef1234567890
+        status:
+          type: string
+          enum:
+            - queued
+            - sent
+            - failed
+          example: queued
+        channel:
+          type: string
+          enum:
+            - email
+            - sms
+            - push
+          example: email
+        queued_at:
+          type: string
+          format: date-time
+          example: '2026-06-20T18:30:00Z'
+        message:
+          type: string
+          example: Notification queued for delivery.
+
+    Attachment:
+      type: object
+      required:
+        - filename
+        - content_base64
+        - mime_type
+      properties:
+        filename:
+          type: string
+          example: statement_June_2026.pdf
+        content_base64:
+          type: string
+          description: Base64-encoded file content
+          example: JVBERi0xLjQK...
+        mime_type:
+          type: string
+          example: application/pdf
+
+  # ── Responses ────────────────────────────────────────────────────────────
+  responses:
+    BadRequest:
+      description: Bad request — invalid syntax or missing required field
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/RateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimitRemaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/RateLimitReset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INVALID_REQUEST
+              message: The request body contains invalid JSON
+              request_id: a1b2c3d4-1234-5678-9abc-def012345678
+              timestamp: '2026-06-20T14:30:00Z'
+
+    Unauthorized:
+      description: Unauthorized — missing or invalid authentication credentials
+      headers:
+        Strict-Transport-Security:
+          $ref: '#/components/headers/HSTS'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INVALID_TOKEN
+              message: The access token is expired or invalid
+              request_id: a1b2c3d4-1234-5678-9abc-def012345678
+              timestamp: '2026-06-20T14:30:00Z'
+
+    Forbidden:
+      description: Forbidden — authenticated but insufficient privileges
+      headers:
+        Strict-Transport-Security:
+          $ref: '#/components/headers/HSTS'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INSUFFICIENT_SCOPE
+              message: Token does not have the required scope (cards:write)
+              request_id: a1b2c3d4-1234-5678-9abc-def012345678
+              timestamp: '2026-06-20T14:30:00Z'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: RESOURCE_NOT_FOUND
+              message: No resource found matching the given identifier
+              request_id: a1b2c3d4-1234-5678-9abc-def012345678
+              timestamp: '2026-06-20T14:30:00Z'
+
+    Conflict:
+      description: Conflict — resource state prevents the operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: CONFLICT
+              message: The account is already frozen
+              request_id: a1b2c3d4-1234-5678-9abc-def012345678
+              timestamp: '2026-06-20T14:30:00Z'
+
+    Gone:
+      description: Gone — the resource is no longer available
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: EXPIRED_OTP
+              message: The OTP has expired. Please request a new one.
+              request_id: a1b2c3d4-1234-5678-9abc-def012345678
+              timestamp: '2026-06-20T14:30:00Z'
+
+    UnprocessableEntity:
+      description: Unprocessable entity — semantic validation failure
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: UNPROCESSABLE_ENTITY
+              message: Identity document image is blurry or illegible
+              details:
+                - field: document_image_base64
+                  reason: image does not meet minimum DPI requirement
+              request_id: a1b2c3d4-1234-5678-9abc-def012345678
+              timestamp: '2026-06-20T14:30:00Z'
+
+    RangeNotSatisfiable:
+      description: Requested range is not satisfiable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: RANGE_NOT_SATISFIABLE
+              message: The requested page exceeds the available data
+              request_id: a1b2c3d4-1234-5678-9abc-def012345678
+              timestamp: '2026-06-20T14:30:00Z'
+
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/RateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimitRemaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/RateLimitReset'
+        Retry-After:
+          description: Seconds to wait before retrying
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: RATE_LIMIT_EXCEEDED
+              message: Too many requests. Please retry after the specified interval.
+              request_id: a1b2c3d4-1234-5678-9abc-def012345678
+              timestamp: '2026-06-20T14:30:00Z'
+
+    InternalServerError:
+      description: Internal server error
+      headers:
+        Strict-Transport-Security:
+          $ref: '#/components/headers/HSTS'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INTERNAL_SERVER_ERROR
+              message: An unexpected error occurred. Please contact support.
+              request_id: a1b2c3d4-1234-5678-9abc-def012345678
+              timestamp: '2026-06-20T14:30:00Z'
+
+    ServiceUnavailable:
+      description: Service unavailable — downstream dependency failure
+      headers:
+        Strict-Transport-Security:
+          $ref: '#/components/headers/HSTS'
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: SERVICE_UNAVAILABLE
+              message: HSM service is temporarily unavailable. Please retry later.
+              request_id: a1b2c3d4-1234-5678-9abc-def012345678
+              timestamp: '2026-06-20T14:30:00Z'
+
+    # ── Audit Log Schema ──────────────────────────────────────────────────────
+    AuditLogEntry:
+      type: object
+      description: Immutable audit log entry with hash chain integrity
+      required:
+        - id
+        - timestamp
+        - action
+        - actor
+        - resource
+        - outcome
+      properties:
+        id:
+          type: integer
+          description: Monotonically increasing entry ID
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC timestamp
+        action:
+          type: string
+          description: The operation performed (CREATE, READ, UPDATE, DELETE, etc.)
+          example: CREATE
+        actor:
+          type: string
+          description: Who performed the action (user ID, robot name, system)
+          example: admin
+        resource:
+          type: string
+          description: The resource affected (case ID, account ID, etc.)
+          example: Case-001
+        outcome:
+          type: string
+          enum: [SUCCESS, FAILURE, DENIED]
+          description: Outcome of the action
+        details:
+          type: string
+          description: Human-readable description or structured JSON
+        source_ip:
+          type: string
+          format: ip
+          description: Origin IP address
+        correlation_id:
+          type: string
+          format: uuid
+          description: Correlation ID linking related events
+        previous_hash:
+          type: string
+          description: SHA-256 hash of the previous entry
+          example: "0000000000000000000000000000000000000000000000000000000000000000"
+        hash:
+          type: string
+          description: SHA-256 hash of this entry (payload + previous_hash)
+          example: "a1b2c3d4e5f6..."
+    AuditLogResponse:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLogEntry'
+        total:
+          type: integer
+
+    # ── Versioning Info ──────────────────────────────────────────────────────
+    VersionInfo:
+      type: object
+      description: API versioning metadata
+      properties:
+        current_version:
+          type: string
+          example: "v1"
+        deprecation_date:
+          type: string
+          format: date
+          description: When this version will be sunset
+          example: "2027-06-20"
+        sunset:
+          type: string
+          format: date
+          description: When this version stops serving requests
+          example: "2027-12-31"
+        changelog_url:
+          type: string
+          format: url
+          description: Link to the version changelog
+          example: "https://developers.smartbank.ai/changelog"
+        migration_guide_url:
+          type: string
+          format: url
+          description: Guide for migrating to the next version
+          example: "https://developers.smartbank.ai/migration-v2"

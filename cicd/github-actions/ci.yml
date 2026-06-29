@@ -1,0 +1,239 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION_DEFAULT: "3.11"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION_DEFAULT }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION_DEFAULT }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-lint-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-lint-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 flake8-docstrings
+
+      - name: flake8
+        run: flake8 agents/ document-ai/ robots/ --max-line-length=120 --statistics
+        continue-on-error: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install markdownlint
+        run: npm install -g markdownlint-cli
+
+      - name: markdownlint
+        run: markdownlint '**/*.md' --ignore node_modules --ignore .github
+        continue-on-error: false
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-test-${{ matrix.python-version }}-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-test-${{ matrix.python-version }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pytest-mock requests-mock
+          if (Test-Path requirements.txt) { pip install -r requirements.txt }
+
+      - name: Run tests with coverage
+        run: |
+          pytest agents/ document-ai/ robots/ \
+            --cov=agents --cov=document_ai --cov=robots \
+            --cov-report=xml:coverage.xml \
+            --cov-report=term-missing \
+            -v
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: coverage-report-${{ matrix.python-version }}
+          path: coverage.xml
+
+      - name: Enforce minimum coverage
+        run: |
+          $coverage = python -c "import xml.etree.ElementTree as ET; root = ET.parse('coverage.xml'); print(root.find('.//coverage').get('line-rate'))"
+          $threshold = 0.80
+          if ([double]$coverage -lt $threshold) {
+            Write-Host "FAIL: coverage $coverage below threshold $threshold"
+            exit 1
+          }
+          Write-Host "PASS: coverage $coverage meets threshold $threshold"
+
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-validate-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-validate-
+
+      - name: Install swagger-cli
+        run: npm install -g swagger-cli
+
+      - name: Validate OpenAPI specs
+        run: |
+          $specs = Get-ChildItem -Recurse -Filter "*.yaml" -Path "api/" | Select-Object -ExpandProperty FullName
+          if ($specs.Count -eq 0) {
+            Write-Host "No OpenAPI specs found in api/"
+            exit 0
+          }
+          foreach ($spec in $specs) {
+            Write-Host "Validating $spec"
+            swagger-cli validate $spec
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "FAIL: $spec is invalid"
+              exit 1
+            }
+          }
+
+      - name: Validate BPMN XML files
+        run: |
+          $bpmnFiles = Get-ChildItem -Recurse -Filter "*.bpmn" -Path "bpmn/" | Select-Object -ExpandProperty FullName
+          if ($bpmnFiles.Count -eq 0) {
+            Write-Host "No BPMN files found in bpmn/"
+            exit 0
+          }
+          # Basic well-formedness check via XML schema
+          foreach ($file in $bpmnFiles) {
+            Write-Host "Checking $file"
+            try {
+              [xml]$xml = Get-Content -LiteralPath $file -Raw
+              Write-Host "  PASS: well-formed XML"
+            } catch {
+              Write-Host "  FAIL: $($_.Exception.Message)"
+              exit 1
+            }
+          }
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, test, validate]
+    if: ${{ !cancelled() && needs.lint.result == 'success' && needs.test.result == 'success' && needs.validate.result == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION_DEFAULT }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION_DEFAULT }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-build-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-build-
+
+      - name: Install build dependencies
+        run: pip install build wheel
+
+      - name: Build packages
+        run: |
+          if (Test-Path "agents/setup.py") {
+            python -m build agents/
+          }
+          if (Test-Path "document-ai/setup.py") {
+            python -m build document-ai/
+          }
+          Write-Host "Build artifacts prepared"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            agents/dist/
+            document-ai/dist/
+          if-no-files-found: warn
+
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    needs: [lint, test, validate, build]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Check all quality gates
+        run: |
+          $results = @{
+            lint    = "${{ needs.lint.result }}"
+            test    = "${{ needs.test.result }}"
+            validate = "${{ needs.validate.result }}"
+            build   = "${{ needs.build.result }}"
+          }
+          $failed = $false
+          foreach ($key in $results.Keys) {
+            if ($results[$key] -ne "success") {
+              Write-Host "FAIL: $key — $($results[$key])"
+              $failed = $true
+            } else {
+              Write-Host "PASS: $key"
+            }
+          }
+          if ($failed) {
+            Write-Host "Quality gates not met"
+            exit 1
+          }
+          Write-Host "All quality gates passed"

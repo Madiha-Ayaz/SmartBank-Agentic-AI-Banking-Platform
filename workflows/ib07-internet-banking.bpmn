@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_Ib07InternetBanking" targetNamespace="http://smartbank.ai/bpmn" exporter="SmartBank Maestro Designer" exporterVersion="1.0">
+  <bpmn:process id="Ib07InternetBanking" name="Internet Banking Reset" isExecutable="true" processType="Private">
+    <bpmn:extensions>
+      <bpmn:property id="namespace" value="http://smartbank.ai/internet-banking" />
+      <bpmn:property id="version" value="1.0.0" />
+      <bpmn:property id="riskLevel" value="High" />
+      <bpmn:property id="requiresApproval" value="true" />
+      <bpmn:property id="description" value="Resets internet banking credentials. High-risk process requiring manager approval." />
+    </bpmn:extensions>
+
+    <bpmn:property id="caseId" name="caseId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="customerId" name="customerId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="requestPayload" name="requestPayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="responsePayload" name="responsePayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="username" name="username" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="resetType" name="resetType" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="approvalStatus" name="approvalStatus" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="resetStatus" name="resetStatus" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="errorCode" name="errorCode" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="retryCount" name="retryCount" itemSubjectRef="ItemDef_Int" />
+
+    <bpmn:itemDefinition id="ItemDef_String" structureRef="xsd:string" />
+    <bpmn:itemDefinition id="ItemDef_Int" structureRef="xsd:int" />
+
+    <bpmn:startEvent id="StartEvent_IB07" name="IB Reset Request">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="signal" />
+        <bpmn:property id="signalName" value="SmartBank.IB07.Reset" />
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+
+    <!-- Service Task 1: Validate Customer -->
+    <bpmn:serviceTask id="ServiceTask_ValidateCustomer" name="Validate Customer" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/customer/validate" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="15000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="Customer Validation Service" />
+        <bpmn:property id="inputs" value="customerId, username" />
+        <bpmn:property id="outputs" value="approvalStatus" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_ValidateCustomer" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_IB07_Validate">
+        <bpmn:targetRef>DataInput_ValidateCustomer</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId, username}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_ValidateCustomer</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_IB07_Validate">
+        <bpmn:sourceRef>DataOutput_ValidateCustomer</bpmn:sourceRef>
+        <bpmn:targetRef>approvalStatus</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_ValidateCustomer</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">approvalStatus</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_IB07_Validate" attachedToRef="ServiceTask_ValidateCustomer">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_IB07_Validate" errorRef="Error_ValidateCustomer" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_IB07_Validate" attachedToRef="ServiceTask_ValidateCustomer">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_IB07_Validate">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT30S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Customer Valid? -->
+    <bpmn:exclusiveGateway id="Gateway_CustomerValid" name="Customer Valid?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_IB07_Start_To_Validate" name="" sourceRef="StartEvent_IB07" targetRef="ServiceTask_ValidateCustomer" />
+    <bpmn:sequenceFlow id="Flow_IB07_Validate_To_Gateway" name="" sourceRef="ServiceTask_ValidateCustomer" targetRef="Gateway_CustomerValid" />
+
+    <!-- User Task: Manager Approval -->
+    <bpmn:sequenceFlow id="Flow_IB07_Valid" name="Valid" sourceRef="Gateway_CustomerValid" targetRef="UserTask_ManagerApproval">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "Valid"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:userTask id="UserTask_ManagerApproval" name="Manager Approval" implementation="UiPath.Persona.Manager">
+      <bpmn:extensionElements>
+        <bpmn:property id="taskQueue" value="SmartBank.ManagerApproval.IBReset" />
+        <bpmn:property id="priority" value="High" />
+        <bpmn:property id="slaTimeout" value="PT4H" />
+        <bpmn:property id="escalationAfter" value="PT1H" />
+        <bpmn:property id="formType" value="SmartBank.IBResetApproval.v1" />
+        <bpmn:property id="performer" value="Branch Manager" />
+        <bpmn:property id="inputs" value="customerId, username, resetType" />
+        <bpmn:property id="outputs" value="approvalStatus" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_IB07Approval" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_IB07_Approval">
+        <bpmn:targetRef>DataInput_Approval</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId, username, resetType}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_Approval</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_IB07_Approval">
+        <bpmn:sourceRef>DataOutput_Approval</bpmn:sourceRef>
+        <bpmn:targetRef>approvalStatus</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_Approval</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">approvalStatus</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:userTask>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_IB07_Approval" attachedToRef="UserTask_ManagerApproval">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_IB07_Approval">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT4H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Approved? -->
+    <bpmn:exclusiveGateway id="Gateway_Approved" name="Approved?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_IB07_Approval_To_Gateway" name="" sourceRef="UserTask_ManagerApproval" targetRef="Gateway_Approved" />
+
+    <!-- Service Task 2: Reset Credentials -->
+    <bpmn:sequenceFlow id="Flow_IB07_Approved" name="Approved" sourceRef="Gateway_Approved" targetRef="ServiceTask_ResetCredentials">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "Approved"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_ResetCredentials" name="Reset Credentials" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/ibanking/reset" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="30000" />
+        <bpmn:property id="slaTimeout" value="PT1M" />
+        <bpmn:property id="performer" value="Internet Banking Service" />
+        <bpmn:property id="inputs" value="customerId, username, resetType" />
+        <bpmn:property id="outputs" value="resetStatus, responsePayload" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_ResetCredentials" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_IB07_Reset">
+        <bpmn:targetRef>DataInput_ResetCredentials</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId, username, resetType}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_ResetCredentials</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_IB07_Reset">
+        <bpmn:sourceRef>DataOutput_ResetCredentials</bpmn:sourceRef>
+        <bpmn:targetRef>responsePayload</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_ResetCredentials</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">responsePayload</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_IB07_Reset" attachedToRef="ServiceTask_ResetCredentials">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_IB07_Reset" errorRef="Error_ResetCredentials" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_IB07_Reset" attachedToRef="ServiceTask_ResetCredentials">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_IB07_Reset">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Reset Success? -->
+    <bpmn:exclusiveGateway id="Gateway_ResetSuccess" name="Reset Success?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_IB07_Reset_To_Gateway" name="" sourceRef="ServiceTask_ResetCredentials" targetRef="Gateway_ResetSuccess" />
+
+    <bpmn:sequenceFlow id="Flow_IB07_Success" name="Reset" sourceRef="Gateway_ResetSuccess" targetRef="EndEvent_IB07_Success">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">resetStatus = "Reset" OrElse IsNothing(errorCode)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_IB07_Success" name="IB Reset Complete">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.IB07.ResetComplete" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- Failure Paths -->
+    <bpmn:sequenceFlow id="Flow_IB07_Invalid" name="Invalid" sourceRef="Gateway_CustomerValid" targetRef="EndEvent_IB07_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "Invalid"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_IB07_Rejected" name="Rejected" sourceRef="Gateway_Approved" targetRef="EndEvent_IB07_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "Rejected"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_IB07_ResetFailed" name="Failed" sourceRef="Gateway_ResetSuccess" targetRef="EndEvent_IB07_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">Not IsNothing(errorCode)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_IB07_Failed" name="IB Reset Failed">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.IB07.Failed" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_IB07_Error_Validate" name="Validate Error" sourceRef="BoundaryError_IB07_Validate" targetRef="EndEvent_IB07_Failed" />
+    <bpmn:sequenceFlow id="Flow_IB07_Timer_Validate" name="Validate SLA" sourceRef="BoundaryTimer_IB07_Validate" targetRef="EndEvent_IB07_Failed" />
+    <bpmn:sequenceFlow id="Flow_IB07_Timer_Approval" name="Approval SLA" sourceRef="BoundaryTimer_IB07_Approval" targetRef="EndEvent_IB07_Failed" />
+    <bpmn:sequenceFlow id="Flow_IB07_Error_Reset" name="Reset Error" sourceRef="BoundaryError_IB07_Reset" targetRef="EndEvent_IB07_Failed" />
+    <bpmn:sequenceFlow id="Flow_IB07_Timer_Reset" name="Reset SLA" sourceRef="BoundaryTimer_IB07_Reset" targetRef="EndEvent_IB07_Failed" />
+
+    <bpmn:error id="Error_ValidateCustomer" name="ValidateCustomerError" errorCode="ERR_VALIDATE_CUSTOMER" />
+    <bpmn:error id="Error_ResetCredentials" name="ResetCredentialsError" errorCode="ERR_RESET_CREDENTIALS" />
+  </bpmn:process>
+
+  <bpmn:interface id="Interface_IB07" name="Internet Banking API Interface">
+    <bpmn:operation id="Operation_ValidateCustomer" name="ValidateCustomer" implementationRef="SmartBank.API.ValidateCustomer">
+      <bpmn:inMessageRef>Message_ValidateCustomerRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_ValidateCustomerResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_IB07Approval" name="IBResetApproval" implementationRef="SmartBank.UI.IBResetApproval">
+      <bpmn:inMessageRef>Message_IB07ApprovalRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_IB07ApprovalResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_ResetCredentials" name="ResetCredentials" implementationRef="SmartBank.API.ResetCredentials">
+      <bpmn:inMessageRef>Message_ResetCredentialsRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_ResetCredentialsResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+  </bpmn:interface>
+
+  <bpmn:message id="Message_ValidateCustomerRequest" name="SmartBank.ValidateCustomerRequest.v1" />
+  <bpmn:message id="Message_ValidateCustomerResponse" name="SmartBank.ValidateCustomerResponse.v1" />
+  <bpmn:message id="Message_IB07ApprovalRequest" name="SmartBank.IBResetApprovalRequest.v1" />
+  <bpmn:message id="Message_IB07ApprovalResponse" name="SmartBank.IBResetApprovalResponse.v1" />
+  <bpmn:message id="Message_ResetCredentialsRequest" name="SmartBank.ResetCredentialsRequest.v1" />
+  <bpmn:message id="Message_ResetCredentialsResponse" name="SmartBank.ResetCredentialsResponse.v1" />
+
+  <bpmn:dataInput id="DataInput_ValidateCustomer" name="ValidateCustomerInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_ValidateCustomer" name="ValidateCustomerOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_Approval" name="ApprovalInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_Approval" name="ApprovalOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_ResetCredentials" name="ResetCredentialsInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_ResetCredentials" name="ResetCredentialsOutput" itemSubjectRef="ItemDef_String" />
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_IB07" name="Internet Banking Reset Diagram">
+    <bpmndi:BPMNPlane id="BPMNPlane_IB07" bpmnElement="Ib07InternetBanking">
+      <bpmndi:BPMNShape id="Shape_IB07_Start" bpmnElement="StartEvent_IB07">
+        <dc:Bounds x="50" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IB07_Validate" bpmnElement="ServiceTask_ValidateCustomer">
+        <dc:Bounds x="160" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IB07_Gateway_Valid" bpmnElement="Gateway_CustomerValid">
+        <dc:Bounds x="350" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IB07_Approval" bpmnElement="UserTask_ManagerApproval">
+        <dc:Bounds x="470" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IB07_Gateway_Approved" bpmnElement="Gateway_Approved">
+        <dc:Bounds x="660" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IB07_Reset" bpmnElement="ServiceTask_ResetCredentials">
+        <dc:Bounds x="780" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IB07_Gateway_Reset" bpmnElement="Gateway_ResetSuccess">
+        <dc:Bounds x="970" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IB07_End_Success" bpmnElement="EndEvent_IB07_Success">
+        <dc:Bounds x="1100" y="150" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IB07_End_Failed" bpmnElement="EndEvent_IB07_Failed">
+        <dc:Bounds x="1100" y="260" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_IB07_Error_Validate" bpmnElement="BoundaryError_IB07_Validate">
+        <dc:Bounds x="180" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IB07_Timer_Validate" bpmnElement="BoundaryTimer_IB07_Validate">
+        <dc:Bounds x="224" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IB07_Timer_Approval" bpmnElement="BoundaryTimer_IB07_Approval">
+        <dc:Bounds x="512" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IB07_Error_Reset" bpmnElement="BoundaryError_IB07_Reset">
+        <dc:Bounds x="800" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_IB07_Timer_Reset" bpmnElement="BoundaryTimer_IB07_Reset">
+        <dc:Bounds x="844" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Edge_IB07_Start_To_Validate" bpmnElement="Flow_IB07_Start_To_Validate">
+        <di:waypoint x="86" y="218" />
+        <di:waypoint x="160" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_Validate_To_Gateway" bpmnElement="Flow_IB07_Validate_To_Gateway">
+        <di:waypoint x="280" y="218" />
+        <di:waypoint x="350" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_Valid" bpmnElement="Flow_IB07_Valid">
+        <di:waypoint x="400" y="213" />
+        <di:waypoint x="470" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_Approval_To_Gateway" bpmnElement="Flow_IB07_Approval_To_Gateway">
+        <di:waypoint x="590" y="218" />
+        <di:waypoint x="660" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_Approved" bpmnElement="Flow_IB07_Approved">
+        <di:waypoint x="710" y="213" />
+        <di:waypoint x="780" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_Reset_To_Gateway" bpmnElement="Flow_IB07_Reset_To_Gateway">
+        <di:waypoint x="900" y="218" />
+        <di:waypoint x="970" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_Success" bpmnElement="Flow_IB07_Success">
+        <di:waypoint x="1020" y="213" />
+        <di:waypoint x="1100" y="168" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_Invalid" bpmnElement="Flow_IB07_Invalid">
+        <di:waypoint x="375" y="238" />
+        <di:waypoint x="375" y="320" />
+        <di:waypoint x="1118" y="320" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_Rejected" bpmnElement="Flow_IB07_Rejected">
+        <di:waypoint x="685" y="238" />
+        <di:waypoint x="685" y="320" />
+        <di:waypoint x="1118" y="320" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_ResetFailed" bpmnElement="Flow_IB07_ResetFailed">
+        <di:waypoint x="995" y="238" />
+        <di:waypoint x="995" y="320" />
+        <di:waypoint x="1118" y="320" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_Error_Validate" bpmnElement="Flow_IB07_Error_Validate">
+        <di:waypoint x="198" y="294" />
+        <di:waypoint x="198" y="360" />
+        <di:waypoint x="1118" y="360" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_Timer_Validate" bpmnElement="Flow_IB07_Timer_Validate">
+        <di:waypoint x="242" y="294" />
+        <di:waypoint x="242" y="380" />
+        <di:waypoint x="1118" y="380" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_Timer_Approval" bpmnElement="Flow_IB07_Timer_Approval">
+        <di:waypoint x="530" y="258" />
+        <di:waypoint x="530" y="340" />
+        <di:waypoint x="1118" y="340" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_Error_Reset" bpmnElement="Flow_IB07_Error_Reset">
+        <di:waypoint x="818" y="294" />
+        <di:waypoint x="818" y="360" />
+        <di:waypoint x="1118" y="360" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_Timer_Reset" bpmnElement="Flow_IB07_Timer_Reset">
+        <di:waypoint x="862" y="294" />
+        <di:waypoint x="862" y="380" />
+        <di:waypoint x="1118" y="380" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

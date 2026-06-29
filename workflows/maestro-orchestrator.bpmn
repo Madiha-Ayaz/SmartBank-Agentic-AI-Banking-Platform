@@ -1,0 +1,506 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_MaestroOrchestrator" targetNamespace="http://smartbank.ai/bpmn" exporter="SmartBank Maestro Designer" exporterVersion="1.0">
+  <bpmn:process id="MaestroOrchestrator" name="SmartBank Maestro Orchestrator" isExecutable="true" processType="Public">
+    <bpmn:extensions>
+      <bpmn:property id="namespace" value="http://smartbank.ai/orchestration" />
+      <bpmn:property id="version" value="1.0.0" />
+      <bpmn:property id="description" value="Master orchestration flow for SmartBank Agentic AI Banking Platform" />
+    </bpmn:extensions>
+
+    <!-- Correlation Key -->
+    <bpmn:correlationKey id="CorrelationKey_CaseId" name="CaseId">
+      <bpmn:correlationPropertyRef>CorrelationProperty_CaseId</bpmn:correlationPropertyRef>
+    </bpmn:correlationKey>
+
+    <bpmn:correlationProperty id="CorrelationProperty_CaseId" name="CaseId" type="xsd:string" />
+
+    <!-- Process Variables -->
+    <bpmn:property id="caseId" name="caseId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="customerId" name="customerId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="intentCode" name="intentCode" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="intentConfidence" name="intentConfidence" itemSubjectRef="ItemDef_Double" />
+    <bpmn:property id="classificationResult" name="classificationResult" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="requestPayload" name="requestPayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="responsePayload" name="responsePayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="errorCode" name="errorCode" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="retryCount" name="retryCount" itemSubjectRef="ItemDef_Int" />
+    <bpmn:property id="slaDeadline" name="slaDeadline" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="escalationLevel" name="escalationLevel" itemSubjectRef="ItemDef_Int" />
+
+    <bpmn:itemDefinition id="ItemDef_String" structureRef="xsd:string" />
+    <bpmn:itemDefinition id="ItemDef_Double" structureRef="xsd:double" />
+    <bpmn:itemDefinition id="ItemDef_Int" structureRef="xsd:int" />
+
+    <!-- Start Event: Message -->
+    <bpmn:startEvent id="StartEvent_CustomerRequest" name="CustomerRequest Received">
+      <bpmn:correlationKeyRef>CorrelationKey_CaseId</bpmn:correlationKeyRef>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_CustomerRequest" />
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.CustomerRequest.v1" />
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+
+    <!-- Service Task: AI Classification Agent -->
+    <bpmn:serviceTask id="ServiceTask_AIClassification" name="AI Classification Agent" implementation="UiPath.Integration.Service" operationRef="Operation_ClassifyIntent">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/classify" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="timeout" value="30000" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_ClassifyIntent" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_ClassifyRequest">
+        <bpmn:targetRef>DataInput_ClassifyRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{requestPayload}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_ClassifyRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_ClassifyResponse">
+        <bpmn:sourceRef>DataOutput_ClassifyResponse</bpmn:sourceRef>
+        <bpmn:targetRef>classificationResult</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_ClassifyResponse</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">classificationResult</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <!-- Error Boundary Event on AI Classification (Retry) -->
+    <bpmn:boundaryEvent id="BoundaryError_Classification" attachedToRef="ServiceTask_AIClassification">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_Classification" errorRef="Error_Classification" />
+    </bpmn:boundaryEvent>
+
+    <!-- Timer Boundary Event for Classification SLA -->
+    <bpmn:boundaryEvent id="BoundaryTimer_Classification" attachedToRef="ServiceTask_AIClassification">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_Classification">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT30S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Exclusive Gateway: Route by Intent -->
+    <bpmn:exclusiveGateway id="Gateway_RouteByIntent" name="Route By Intent" gatewayDirection="Diverging">
+      <bpmn:extensionElements>
+        <bpmn:property id="routingField" value="intentCode" />
+      </bpmn:extensionElements>
+    </bpmn:exclusiveGateway>
+
+    <!-- ATM01 Path -->
+    <bpmn:sequenceFlow id="Flow_To_ATM01" name="ATM01 - Card Activation" sourceRef="Gateway_RouteByIntent" targetRef="CallActivity_ATM01">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">intentCode = "ATM01"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:callActivity id="CallActivity_ATM01" name="ATM Card Activation" calledElement="Atm01Activation" callableElementType="bpmn:process">
+      <bpmn:extensionElements>
+        <bpmn:property id="calledProcessVersion" value="1.0.0" />
+      </bpmn:extensionElements>
+      <bpmn:in id="CallActivity_ATM01_In_CaseId" source="caseId" target="caseId" />
+      <bpmn:in id="CallActivity_ATM01_In_CustomerId" source="customerId" target="customerId" />
+      <bpmn:in id="CallActivity_ATM01_In_RequestPayload" source="requestPayload" target="requestPayload" />
+      <bpmn:out id="CallActivity_ATM01_Out_Response" source="responsePayload" target="responsePayload" />
+    </bpmn:callActivity>
+
+    <!-- PIN02 Path -->
+    <bpmn:sequenceFlow id="Flow_To_PIN02" name="PIN02 - PIN Reset" sourceRef="Gateway_RouteByIntent" targetRef="CallActivity_PIN02">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">intentCode = "PIN02"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:callActivity id="CallActivity_PIN02" name="PIN Generation/Reset" calledElement="Pin02Generation" callableElementType="bpmn:process">
+      <bpmn:in id="CallActivity_PIN02_In_CaseId" source="caseId" target="caseId" />
+      <bpmn:in id="CallActivity_PIN02_In_CustomerId" source="customerId" target="customerId" />
+      <bpmn:in id="CallActivity_PIN02_In_RequestPayload" source="requestPayload" target="requestPayload" />
+      <bpmn:out id="CallActivity_PIN02_Out_Response" source="responsePayload" target="responsePayload" />
+    </bpmn:callActivity>
+
+    <!-- DEB03 Path -->
+    <bpmn:sequenceFlow id="Flow_To_DEB03" name="DEB03 - Card Block" sourceRef="Gateway_RouteByIntent" targetRef="CallActivity_DEB03">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">intentCode = "DEB03"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:callActivity id="CallActivity_DEB03" name="Card Block" calledElement="Deb03CardBlock" callableElementType="bpmn:process">
+      <bpmn:in id="CallActivity_DEB03_In_CaseId" source="caseId" target="caseId" />
+      <bpmn:in id="CallActivity_DEB03_In_CustomerId" source="customerId" target="customerId" />
+      <bpmn:in id="CallActivity_DEB03_In_RequestPayload" source="requestPayload" target="requestPayload" />
+      <bpmn:out id="CallActivity_DEB03_Out_Response" source="responsePayload" target="responsePayload" />
+    </bpmn:callActivity>
+
+    <!-- STM04 Path -->
+    <bpmn:sequenceFlow id="Flow_To_STM04" name="STM04 - Statement" sourceRef="Gateway_RouteByIntent" targetRef="CallActivity_STM04">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">intentCode = "STM04"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:callActivity id="CallActivity_STM04" name="Statement Generation" calledElement="Stm04Statement" callableElementType="bpmn:process">
+      <bpmn:in id="CallActivity_STM04_In_CaseId" source="caseId" target="caseId" />
+      <bpmn:in id="CallActivity_STM04_In_CustomerId" source="customerId" target="customerId" />
+      <bpmn:in id="CallActivity_STM04_In_RequestPayload" source="requestPayload" target="requestPayload" />
+      <bpmn:out id="CallActivity_STM04_Out_Response" source="responsePayload" target="responsePayload" />
+    </bpmn:callActivity>
+
+    <!-- LTR05 Path -->
+    <bpmn:sequenceFlow id="Flow_To_LTR05" name="LTR05 - Letter" sourceRef="Gateway_RouteByIntent" targetRef="CallActivity_LTR05">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">intentCode = "LTR05"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:callActivity id="CallActivity_LTR05" name="Account Opening Letter" calledElement="Ltr05Letter" callableElementType="bpmn:process">
+      <bpmn:in id="CallActivity_LTR05_In_CaseId" source="caseId" target="caseId" />
+      <bpmn:in id="CallActivity_LTR05_In_CustomerId" source="customerId" target="customerId" />
+      <bpmn:in id="CallActivity_LTR05_In_RequestPayload" source="requestPayload" target="requestPayload" />
+      <bpmn:out id="CallActivity_LTR05_Out_Response" source="responsePayload" target="responsePayload" />
+    </bpmn:callActivity>
+
+    <!-- NIC06 Path -->
+    <bpmn:sequenceFlow id="Flow_To_NIC06" name="NIC06 - ID Update" sourceRef="Gateway_RouteByIntent" targetRef="CallActivity_NIC06">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">intentCode = "NIC06"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:callActivity id="CallActivity_NIC06" name="ID Update" calledElement="Nic06IdUpdate" callableElementType="bpmn:process">
+      <bpmn:in id="CallActivity_NIC06_In_CaseId" source="caseId" target="caseId" />
+      <bpmn:in id="CallActivity_NIC06_In_CustomerId" source="customerId" target="customerId" />
+      <bpmn:in id="CallActivity_NIC06_In_RequestPayload" source="requestPayload" target="requestPayload" />
+      <bpmn:out id="CallActivity_NIC06_Out_Response" source="responsePayload" target="responsePayload" />
+    </bpmn:callActivity>
+
+    <!-- IB07 Path -->
+    <bpmn:sequenceFlow id="Flow_To_IB07" name="IB07 - IB Reset" sourceRef="Gateway_RouteByIntent" targetRef="CallActivity_IB07">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">intentCode = "IB07"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:callActivity id="CallActivity_IB07" name="Internet Banking Reset" calledElement="Ib07InternetBanking" callableElementType="bpmn:process">
+      <bpmn:in id="CallActivity_IB07_In_CaseId" source="caseId" target="caseId" />
+      <bpmn:in id="CallActivity_IB07_In_CustomerId" source="customerId" target="customerId" />
+      <bpmn:in id="CallActivity_IB07_In_RequestPayload" source="requestPayload" target="requestPayload" />
+      <bpmn:out id="CallActivity_IB07_Out_Response" source="responsePayload" target="responsePayload" />
+    </bpmn:callActivity>
+
+    <!-- MB08 Path -->
+    <bpmn:sequenceFlow id="Flow_To_MB08" name="MB08 - Mobile Banking" sourceRef="Gateway_RouteByIntent" targetRef="CallActivity_MB08">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">intentCode = "MB08"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:callActivity id="CallActivity_MB08" name="Mobile Banking Activation" calledElement="Mb08MobileBanking" callableElementType="bpmn:process">
+      <bpmn:in id="CallActivity_MB08_In_CaseId" source="caseId" target="caseId" />
+      <bpmn:in id="CallActivity_MB08_In_CustomerId" source="customerId" target="customerId" />
+      <bpmn:in id="CallActivity_MB08_In_RequestPayload" source="requestPayload" target="requestPayload" />
+      <bpmn:out id="CallActivity_MB08_Out_Response" source="responsePayload" target="responsePayload" />
+    </bpmn:callActivity>
+
+    <!-- SFGD Path: SmartFinance Guardian -->
+    <bpmn:sequenceFlow id="Flow_To_SFGD" name="SFGD - SmartFinance Guardian" sourceRef="Gateway_RouteByIntent" targetRef="CallActivity_SFGD">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">intentCode = "SFGD"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:callActivity id="CallActivity_SFGD" name="SmartFinance AI Guardian" calledElement="SmartFinanceGuardian" callableElementType="bpmn:process">
+      <bpmn:extensionElements>
+        <bpmn:property id="calledProcessVersion" value="1.0.0" />
+      </bpmn:extensionElements>
+      <bpmn:in id="CallActivity_SFGD_In_CaseId" source="caseId" target="caseId" />
+      <bpmn:in id="CallActivity_SFGD_In_CustomerId" source="customerId" target="customerId" />
+      <bpmn:in id="CallActivity_SFGD_In_RequestPayload" source="requestPayload" target="requestPayload" />
+      <bpmn:out id="CallActivity_SFGD_Out_Response" source="responsePayload" target="responsePayload" />
+    </bpmn:callActivity>
+
+    <!-- BNK99 Path: Banking Verification & Payment Workflow -->
+    <bpmn:sequenceFlow id="Flow_To_BNK99" name="BNK99 - Banking Workflow" sourceRef="Gateway_RouteByIntent" targetRef="CallActivity_BNK99">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">intentCode = "BNK99"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:callActivity id="CallActivity_BNK99" name="Banking Verification &amp; Payment" calledElement="BankingWorkflow" callableElementType="bpmn:process">
+      <bpmn:extensionElements>
+        <bpmn:property id="calledProcessVersion" value="1.0.0" />
+      </bpmn:extensionElements>
+      <bpmn:in id="CallActivity_BNK99_In_CaseId" source="caseId" target="caseId" />
+      <bpmn:in id="CallActivity_BNK99_In_CustomerId" source="customerId" target="customerId" />
+      <bpmn:in id="CallActivity_BNK99_In_RequestPayload" source="requestPayload" target="requestPayload" />
+      <bpmn:out id="CallActivity_BNK99_Out_Response" source="responsePayload" target="responsePayload" />
+    </bpmn:callActivity>
+
+    <!-- Default Path: Human Agent Triage -->
+    <bpmn:sequenceFlow id="Flow_Default_Triage" name="Default - Triage" sourceRef="Gateway_RouteByIntent" targetRef="UserTask_Triage">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">True</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:userTask id="UserTask_Triage" name="Human Agent Triage" implementation="UiPath.Persona.Agent">
+      <bpmn:extensionElements>
+        <bpmn:property id="taskQueue" value="SmartBank.HumanTriage" />
+        <bpmn:property id="priority" value="High" />
+        <bpmn:property id="slaTimeout" value="PT1H" />
+        <bpmn:property id="escalationAfter" value="PT30M" />
+        <bpmn:property id="formType" value="SmartBank.TriageForm.v1" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_Triage" />
+    </bpmn:userTask>
+
+    <!-- Timer Boundary Event for Triage SLA -->
+    <bpmn:boundaryEvent id="BoundaryTimer_Triage" attachedToRef="UserTask_Triage">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_Triage">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Merge Gateway (Re-convergence) -->
+    <bpmn:exclusiveGateway id="Gateway_Merge" name="Merge" gatewayDirection="Converging" />
+
+    <!-- End Event -->
+    <bpmn:endEvent id="EndEvent_CaseResolved" name="CaseResolved">
+      <bpmn:correlationKeyRef>CorrelationKey_CaseId</bpmn:correlationKeyRef>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_CaseResolved" />
+    </bpmn:endEvent>
+
+    <!-- Sequence Flows from Start -->
+    <bpmn:sequenceFlow id="Flow_Start_To_Classification" name="" sourceRef="StartEvent_CustomerRequest" targetRef="ServiceTask_AIClassification" />
+
+    <!-- Sequence Flow from Classification to Gateway -->
+    <bpmn:sequenceFlow id="Flow_Classification_To_Gateway" name="" sourceRef="ServiceTask_AIClassification" targetRef="Gateway_RouteByIntent" />
+
+    <!-- Sequence Flows from Call Activities to Merge -->
+    <bpmn:sequenceFlow id="Flow_ATM01_To_Merge" name="" sourceRef="CallActivity_ATM01" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_PIN02_To_Merge" name="" sourceRef="CallActivity_PIN02" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_DEB03_To_Merge" name="" sourceRef="CallActivity_DEB03" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_STM04_To_Merge" name="" sourceRef="CallActivity_STM04" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_LTR05_To_Merge" name="" sourceRef="CallActivity_LTR05" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_NIC06_To_Merge" name="" sourceRef="CallActivity_NIC06" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_IB07_To_Merge" name="" sourceRef="CallActivity_IB07" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_MB08_To_Merge" name="" sourceRef="CallActivity_MB08" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_SFGD_To_Merge" name="" sourceRef="CallActivity_SFGD" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_BNK99_To_Merge" name="" sourceRef="CallActivity_BNK99" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_Triage_To_Merge" name="" sourceRef="UserTask_Triage" targetRef="Gateway_Merge" />
+
+    <!-- Sequence Flow from Merge to End -->
+    <bpmn:sequenceFlow id="Flow_Merge_To_End" name="" sourceRef="Gateway_Merge" targetRef="EndEvent_CaseResolved" />
+
+    <!-- Error Boundary Event Flows (Escalation) -->
+    <bpmn:sequenceFlow id="Flow_Error_Classification_To_End" name="Classification Error" sourceRef="BoundaryError_Classification" targetRef="EndEvent_CaseResolved" />
+    <bpmn:sequenceFlow id="Flow_Timer_Classification_To_End" name="SLA Breach" sourceRef="BoundaryTimer_Classification" targetRef="EndEvent_CaseResolved" />
+    <bpmn:sequenceFlow id="Flow_Timer_Triage_To_End" name="Triage SLA Breach" sourceRef="BoundaryTimer_Triage" targetRef="EndEvent_CaseResolved" />
+
+    <!-- Error Definitions -->
+    <bpmn:error id="Error_Classification" name="ClassificationError" errorCode="ERR_CLASSIFICATION" />
+  </bpmn:process>
+
+  <!-- Interface and Operations -->
+  <bpmn:interface id="Interface_SmartBank" name="SmartBank API Interface">
+    <bpmn:operation id="Operation_ClassifyIntent" name="ClassifyIntent" implementationRef="SmartBank.API.ClassifyIntent">
+      <bpmn:inMessageRef>Message_ClassifyRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_ClassifyResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_Triage" name="HumanTriage" implementationRef="SmartBank.UI.TriageForm">
+      <bpmn:inMessageRef>Message_TriageRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_TriageResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+  </bpmn:interface>
+
+  <!-- Message Definitions -->
+  <bpmn:message id="Message_ClassifyRequest" name="SmartBank.ClassifyRequest.v1" />
+  <bpmn:message id="Message_ClassifyResponse" name="SmartBank.ClassifyResponse.v1" />
+  <bpmn:message id="Message_TriageRequest" name="SmartBank.TriageRequest.v1" />
+  <bpmn:message id="Message_TriageResponse" name="SmartBank.TriageResponse.v1" />
+
+  <!-- Data Inputs/Outputs -->
+  <bpmn:dataInput id="DataInput_ClassifyRequest" name="ClassifyRequest" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_ClassifyResponse" name="ClassifyResponse" itemSubjectRef="ItemDef_String" />
+
+  <!-- BPMN Diagram -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_MaestroOrchestrator" name="Maestro Orchestrator Diagram">
+    <bpmndi:BPMNPlane id="BPMNPlane_MaestroOrchestrator" bpmnElement="MaestroOrchestrator">
+      <!-- Start Event -->
+      <bpmndi:BPMNShape id="Shape_StartEvent" bpmnElement="StartEvent_CustomerRequest">
+        <dc:Bounds x="50" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <!-- Classification Service Task -->
+      <bpmndi:BPMNShape id="Shape_Classification" bpmnElement="ServiceTask_AIClassification">
+        <dc:Bounds x="150" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <!-- Route Gateway -->
+      <bpmndi:BPMNShape id="Shape_RouteGateway" bpmnElement="Gateway_RouteByIntent">
+        <dc:Bounds x="340" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <!-- ATM01 Call Activity -->
+      <bpmndi:BPMNShape id="Shape_ATM01" bpmnElement="CallActivity_ATM01">
+        <dc:Bounds x="450" y="50" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <!-- PIN02 Call Activity -->
+      <bpmndi:BPMNShape id="Shape_PIN02" bpmnElement="CallActivity_PIN02">
+        <dc:Bounds x="450" y="150" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <!-- DEB03 Call Activity -->
+      <bpmndi:BPMNShape id="Shape_DEB03" bpmnElement="CallActivity_DEB03">
+        <dc:Bounds x="450" y="250" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <!-- STM04 Call Activity -->
+      <bpmndi:BPMNShape id="Shape_STM04" bpmnElement="CallActivity_STM04">
+        <dc:Bounds x="450" y="350" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <!-- LTR05 Call Activity -->
+      <bpmndi:BPMNShape id="Shape_LTR05" bpmnElement="CallActivity_LTR05">
+        <dc:Bounds x="450" y="450" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <!-- NIC06 Call Activity -->
+      <bpmndi:BPMNShape id="Shape_NIC06" bpmnElement="CallActivity_NIC06">
+        <dc:Bounds x="620" y="50" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <!-- IB07 Call Activity -->
+      <bpmndi:BPMNShape id="Shape_IB07" bpmnElement="CallActivity_IB07">
+        <dc:Bounds x="620" y="150" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <!-- MB08 Call Activity -->
+      <bpmndi:BPMNShape id="Shape_MB08" bpmnElement="CallActivity_MB08">
+        <dc:Bounds x="620" y="250" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <!-- SFGD Call Activity -->
+      <bpmndi:BPMNShape id="Shape_SFGD" bpmnElement="CallActivity_SFGD">
+        <dc:Bounds x="620" y="350" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <!-- BNK99 Call Activity -->
+      <bpmndi:BPMNShape id="Shape_BNK99" bpmnElement="CallActivity_BNK99">
+        <dc:Bounds x="450" y="550" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <!-- Human Triage User Task -->
+      <bpmndi:BPMNShape id="Shape_Triage" bpmnElement="UserTask_Triage">
+        <dc:Bounds x="620" y="470" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <!-- Merge Gateway -->
+      <bpmndi:BPMNShape id="Shape_MergeGateway" bpmnElement="Gateway_Merge">
+        <dc:Bounds x="810" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <!-- End Event -->
+      <bpmndi:BPMNShape id="Shape_EndEvent" bpmnElement="EndEvent_CaseResolved">
+        <dc:Bounds x="920" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- Boundary Error Event Shapes -->
+      <bpmndi:BPMNShape id="Shape_BoundaryError_Classification" bpmnElement="BoundaryError_Classification">
+        <dc:Bounds x="170" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_BoundaryTimer_Classification" bpmnElement="BoundaryTimer_Classification">
+        <dc:Bounds x="214" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_BoundaryTimer_Triage" bpmnElement="BoundaryTimer_Triage">
+        <dc:Bounds x="620" y="480" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- Edges -->
+      <bpmndi:BPMNEdge id="Edge_Start_To_Classification" bpmnElement="Flow_Start_To_Classification">
+        <di:waypoint x="86" y="218" />
+        <di:waypoint x="150" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Classification_To_Gateway" bpmnElement="Flow_Classification_To_Gateway">
+        <di:waypoint x="270" y="218" />
+        <di:waypoint x="340" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_ATM01" bpmnElement="Flow_To_ATM01">
+        <di:waypoint x="365" y="188" />
+        <di:waypoint x="365" y="90" />
+        <di:waypoint x="450" y="90" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_PIN02" bpmnElement="Flow_To_PIN02">
+        <di:waypoint x="365" y="213" />
+        <di:waypoint x="450" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_DEB03" bpmnElement="Flow_To_DEB03">
+        <di:waypoint x="365" y="238" />
+        <di:waypoint x="365" y="290" />
+        <di:waypoint x="450" y="290" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_STM04" bpmnElement="Flow_To_STM04">
+        <di:waypoint x="365" y="238" />
+        <di:waypoint x="365" y="390" />
+        <di:waypoint x="450" y="390" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_LTR05" bpmnElement="Flow_To_LTR05">
+        <di:waypoint x="365" y="238" />
+        <di:waypoint x="365" y="490" />
+        <di:waypoint x="450" y="490" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_NIC06" bpmnElement="Flow_To_NIC06">
+        <di:waypoint x="390" y="213" />
+        <di:waypoint x="620" y="90" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_IB07" bpmnElement="Flow_To_IB07">
+        <di:waypoint x="390" y="213" />
+        <di:waypoint x="670" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_MB08" bpmnElement="Flow_To_MB08">
+        <di:waypoint x="390" y="238" />
+        <di:waypoint x="390" y="290" />
+        <di:waypoint x="620" y="290" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_Triage" bpmnElement="Flow_Default_Triage">
+        <di:waypoint x="390" y="238" />
+        <di:waypoint x="390" y="440" />
+        <di:waypoint x="620" y="440" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_BNK99" bpmnElement="Flow_To_BNK99">
+        <di:waypoint x="390" y="238" />
+        <di:waypoint x="390" y="590" />
+        <di:waypoint x="450" y="590" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_ATM01_To_Merge" bpmnElement="Flow_ATM01_To_Merge">
+        <di:waypoint x="550" y="90" />
+        <di:waypoint x="835" y="90" />
+        <di:waypoint x="835" y="188" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_To_Merge" bpmnElement="Flow_PIN02_To_Merge">
+        <di:waypoint x="550" y="190" />
+        <di:waypoint x="810" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DEB03_To_Merge" bpmnElement="Flow_DEB03_To_Merge">
+        <di:waypoint x="550" y="290" />
+        <di:waypoint x="810" y="238" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_STM04_To_Merge" bpmnElement="Flow_STM04_To_Merge">
+        <di:waypoint x="550" y="390" />
+        <di:waypoint x="835" y="390" />
+        <di:waypoint x="835" y="238" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_LTR05_To_Merge" bpmnElement="Flow_LTR05_To_Merge">
+        <di:waypoint x="550" y="490" />
+        <di:waypoint x="835" y="490" />
+        <di:waypoint x="835" y="238" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_To_Merge" bpmnElement="Flow_NIC06_To_Merge">
+        <di:waypoint x="720" y="130" />
+        <di:waypoint x="720" y="130" />
+        <di:waypoint x="835" y="130" />
+        <di:waypoint x="835" y="188" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_IB07_To_Merge" bpmnElement="Flow_IB07_To_Merge">
+        <di:waypoint x="720" y="190" />
+        <di:waypoint x="810" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MB08_To_Merge" bpmnElement="Flow_MB08_To_Merge">
+        <di:waypoint x="720" y="290" />
+        <di:waypoint x="810" y="238" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SFGD_To_Merge" bpmnElement="Flow_SFGD_To_Merge">
+        <di:waypoint x="720" y="390" />
+        <di:waypoint x="835" y="390" />
+        <di:waypoint x="835" y="238" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_BNK99_To_Merge" bpmnElement="Flow_BNK99_To_Merge">
+        <di:waypoint x="550" y="590" />
+        <di:waypoint x="835" y="590" />
+        <di:waypoint x="835" y="238" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Triage_To_Merge" bpmnElement="Flow_Triage_To_Merge">
+        <di:waypoint x="720" y="510" />
+        <di:waypoint x="835" y="510" />
+        <di:waypoint x="835" y="238" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Merge_To_End" bpmnElement="Flow_Merge_To_End">
+        <di:waypoint x="860" y="213" />
+        <di:waypoint x="920" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Error_Classification_To_End" bpmnElement="Flow_Error_Classification_To_End">
+        <di:waypoint x="188" y="276" />
+        <di:waypoint x="188" y="320" />
+        <di:waypoint x="938" y="320" />
+        <di:waypoint x="938" y="236" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Timer_Classification_To_End" bpmnElement="Flow_Timer_Classification_To_End">
+        <di:waypoint x="232" y="294" />
+        <di:waypoint x="232" y="340" />
+        <di:waypoint x="938" y="340" />
+        <di:waypoint x="938" y="236" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Timer_Triage_To_End" bpmnElement="Flow_Timer_Triage_To_End">
+        <di:waypoint x="638" y="516" />
+        <di:waypoint x="638" y="560" />
+        <di:waypoint x="938" y="560" />
+        <di:waypoint x="938" y="236" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

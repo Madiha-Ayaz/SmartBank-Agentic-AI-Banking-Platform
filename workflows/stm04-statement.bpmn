@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_Stm04Statement" targetNamespace="http://smartbank.ai/bpmn" exporter="SmartBank Maestro Designer" exporterVersion="1.0">
+  <bpmn:process id="Stm04Statement" name="Statement Generation" isExecutable="true" processType="Private">
+    <bpmn:extensions>
+      <bpmn:property id="namespace" value="http://smartbank.ai/statement" />
+      <bpmn:property id="version" value="1.0.0" />
+      <bpmn:property id="riskLevel" value="Low" />
+      <bpmn:property id="requiresApproval" value="false" />
+      <bpmn:property id="description" value="Generates account statement for customer. Fully automated low-risk process." />
+    </bpmn:extensions>
+
+    <bpmn:property id="caseId" name="caseId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="customerId" name="customerId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="requestPayload" name="requestPayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="responsePayload" name="responsePayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="accountNumber" name="accountNumber" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="statementPeriod" name="statementPeriod" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="statementFormat" name="statementFormat" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="statementUrl" name="statementUrl" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="errorCode" name="errorCode" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="retryCount" name="retryCount" itemSubjectRef="ItemDef_Int" />
+
+    <bpmn:itemDefinition id="ItemDef_String" structureRef="xsd:string" />
+    <bpmn:itemDefinition id="ItemDef_Int" structureRef="xsd:int" />
+
+    <bpmn:startEvent id="StartEvent_STM04" name="Statement Request">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="signal" />
+        <bpmn:property id="signalName" value="SmartBank.STM04.Generate" />
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+
+    <!-- Service Task 1: Fetch Transactions -->
+    <bpmn:serviceTask id="ServiceTask_FetchTransactions" name="Fetch Transactions" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/account/transactions" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="30000" />
+        <bpmn:property id="slaTimeout" value="PT1M" />
+        <bpmn:property id="performer" value="Transaction Service" />
+        <bpmn:property id="inputs" value="accountNumber, statementPeriod" />
+        <bpmn:property id="outputs" value="responsePayload" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_FetchTransactions" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_STM04_Fetch">
+        <bpmn:targetRef>DataInput_FetchTransactions</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{accountNumber, statementPeriod}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_FetchTransactions</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_STM04_Fetch">
+        <bpmn:sourceRef>DataOutput_FetchTransactions</bpmn:sourceRef>
+        <bpmn:targetRef>responsePayload</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_FetchTransactions</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">responsePayload</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_STM04_Fetch" attachedToRef="ServiceTask_FetchTransactions">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_STM04_Fetch" errorRef="Error_FetchTransactions" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_STM04_Fetch" attachedToRef="ServiceTask_FetchTransactions">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_STM04_Fetch">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Data Found? -->
+    <bpmn:exclusiveGateway id="Gateway_DataFound" name="Data Found?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_STM04_Start_To_Fetch" name="" sourceRef="StartEvent_STM04" targetRef="ServiceTask_FetchTransactions" />
+    <bpmn:sequenceFlow id="Flow_STM04_Fetch_To_Gateway" name="" sourceRef="ServiceTask_FetchTransactions" targetRef="Gateway_DataFound" />
+
+    <!-- Service Task 2: Generate PDF -->
+    <bpmn:sequenceFlow id="Flow_STM04_HasData" name="Has Data" sourceRef="Gateway_DataFound" targetRef="ServiceTask_GeneratePDF">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath"><![CDATA[responsePayload <> Nothing AndAlso responsePayload.Length > 0]]></bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_GeneratePDF" name="Generate PDF Statement" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/document/generate" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="60000" />
+        <bpmn:property id="slaTimeout" value="PT2M" />
+        <bpmn:property id="performer" value="Document Generation Service" />
+        <bpmn:property id="inputs" value="responsePayload, statementFormat" />
+        <bpmn:property id="outputs" value="statementUrl" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_GeneratePDF" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_STM04_PDF">
+        <bpmn:targetRef>DataInput_GeneratePDF</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{responsePayload, statementFormat}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_GeneratePDF</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_STM04_PDF">
+        <bpmn:sourceRef>DataOutput_GeneratePDF</bpmn:sourceRef>
+        <bpmn:targetRef>statementUrl</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_GeneratePDF</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">statementUrl</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_STM04_PDF" attachedToRef="ServiceTask_GeneratePDF">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_STM04_PDF" errorRef="Error_PDFGeneration" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_STM04_PDF" attachedToRef="ServiceTask_GeneratePDF">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_STM04_PDF">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT2M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Service Task 3: Send Notification -->
+    <bpmn:serviceTask id="ServiceTask_SendNotification" name="Send Statement Notification" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/notification/send" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="15000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="Notification Service" />
+        <bpmn:property id="inputs" value="customerId, statementUrl, statementFormat" />
+        <bpmn:property id="outputs" value="responsePayload" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_SendNotification" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_STM04_Notify">
+        <bpmn:targetRef>DataInput_SendNotification</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId, statementUrl, statementFormat}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_SendNotification</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_STM04_Notify">
+        <bpmn:sourceRef>DataOutput_SendNotification</bpmn:sourceRef>
+        <bpmn:targetRef>responsePayload</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_SendNotification</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">responsePayload</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_STM04_Notify" attachedToRef="ServiceTask_SendNotification">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_STM04_Notify" errorRef="Error_Notification" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_STM04_Notify" attachedToRef="ServiceTask_SendNotification">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_STM04_Notify">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT30S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <bpmn:sequenceFlow id="Flow_STM04_PDF_To_Notify" name="" sourceRef="ServiceTask_GeneratePDF" targetRef="ServiceTask_SendNotification" />
+
+    <bpmn:sequenceFlow id="Flow_STM04_Success" name="" sourceRef="ServiceTask_SendNotification" targetRef="EndEvent_STM04_Success" />
+
+    <bpmn:endEvent id="EndEvent_STM04_Success" name="Statement Generated">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.STM04.Generated" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- No Data Path -->
+    <bpmn:sequenceFlow id="Flow_STM04_NoData" name="No Data" sourceRef="Gateway_DataFound" targetRef="EndEvent_STM04_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath"><![CDATA[responsePayload Is Nothing OrElse responsePayload.Length = 0]]></bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_STM04_Failed" name="Statement Failed">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.STM04.Failed" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_STM04_Error_Fetch" name="Fetch Error" sourceRef="BoundaryError_STM04_Fetch" targetRef="EndEvent_STM04_Failed" />
+    <bpmn:sequenceFlow id="Flow_STM04_Timer_Fetch" name="Fetch SLA" sourceRef="BoundaryTimer_STM04_Fetch" targetRef="EndEvent_STM04_Failed" />
+    <bpmn:sequenceFlow id="Flow_STM04_Error_PDF" name="PDF Error" sourceRef="BoundaryError_STM04_PDF" targetRef="EndEvent_STM04_Failed" />
+    <bpmn:sequenceFlow id="Flow_STM04_Timer_PDF" name="PDF SLA" sourceRef="BoundaryTimer_STM04_PDF" targetRef="EndEvent_STM04_Failed" />
+    <bpmn:sequenceFlow id="Flow_STM04_Error_Notify" name="Notify Error" sourceRef="BoundaryError_STM04_Notify" targetRef="EndEvent_STM04_Failed" />
+    <bpmn:sequenceFlow id="Flow_STM04_Timer_Notify" name="Notify SLA" sourceRef="BoundaryTimer_STM04_Notify" targetRef="EndEvent_STM04_Failed" />
+
+    <bpmn:error id="Error_FetchTransactions" name="FetchTransactionsError" errorCode="ERR_FETCH_TRANSACTIONS" />
+    <bpmn:error id="Error_PDFGeneration" name="PDFGenerationError" errorCode="ERR_PDF_GENERATION" />
+    <bpmn:error id="Error_Notification" name="NotificationError" errorCode="ERR_NOTIFICATION" />
+  </bpmn:process>
+
+  <bpmn:interface id="Interface_STM04" name="Statement API Interface">
+    <bpmn:operation id="Operation_FetchTransactions" name="FetchTransactions" implementationRef="SmartBank.API.FetchTransactions">
+      <bpmn:inMessageRef>Message_FetchTransactionsRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_FetchTransactionsResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_GeneratePDF" name="GeneratePDF" implementationRef="SmartBank.API.GeneratePDF">
+      <bpmn:inMessageRef>Message_GeneratePDFRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_GeneratePDFResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_SendNotification" name="SendNotification" implementationRef="SmartBank.API.SendNotification">
+      <bpmn:inMessageRef>Message_SendNotificationRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_SendNotificationResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+  </bpmn:interface>
+
+  <bpmn:message id="Message_FetchTransactionsRequest" name="SmartBank.FetchTransactionsRequest.v1" />
+  <bpmn:message id="Message_FetchTransactionsResponse" name="SmartBank.FetchTransactionsResponse.v1" />
+  <bpmn:message id="Message_GeneratePDFRequest" name="SmartBank.GeneratePDFRequest.v1" />
+  <bpmn:message id="Message_GeneratePDFResponse" name="SmartBank.GeneratePDFResponse.v1" />
+  <bpmn:message id="Message_SendNotificationRequest" name="SmartBank.SendNotificationRequest.v1" />
+  <bpmn:message id="Message_SendNotificationResponse" name="SmartBank.SendNotificationResponse.v1" />
+
+  <bpmn:dataInput id="DataInput_FetchTransactions" name="FetchTransactionsInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_FetchTransactions" name="FetchTransactionsOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_GeneratePDF" name="GeneratePDFInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_GeneratePDF" name="GeneratePDFOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_SendNotification" name="SendNotificationInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_SendNotification" name="SendNotificationOutput" itemSubjectRef="ItemDef_String" />
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_STM04" name="Statement Generation Diagram">
+    <bpmndi:BPMNPlane id="BPMNPlane_STM04" bpmnElement="Stm04Statement">
+      <bpmndi:BPMNShape id="Shape_STM04_Start" bpmnElement="StartEvent_STM04">
+        <dc:Bounds x="50" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_STM04_Fetch" bpmnElement="ServiceTask_FetchTransactions">
+        <dc:Bounds x="160" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_STM04_Gateway_Data" bpmnElement="Gateway_DataFound">
+        <dc:Bounds x="350" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_STM04_PDF" bpmnElement="ServiceTask_GeneratePDF">
+        <dc:Bounds x="470" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_STM04_Notify" bpmnElement="ServiceTask_SendNotification">
+        <dc:Bounds x="660" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_STM04_End_Success" bpmnElement="EndEvent_STM04_Success">
+        <dc:Bounds x="850" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_STM04_End_Failed" bpmnElement="EndEvent_STM04_Failed">
+        <dc:Bounds x="850" y="300" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_STM04_Error_Fetch" bpmnElement="BoundaryError_STM04_Fetch">
+        <dc:Bounds x="180" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_STM04_Timer_Fetch" bpmnElement="BoundaryTimer_STM04_Fetch">
+        <dc:Bounds x="224" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_STM04_Error_PDF" bpmnElement="BoundaryError_STM04_PDF">
+        <dc:Bounds x="490" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_STM04_Timer_PDF" bpmnElement="BoundaryTimer_STM04_PDF">
+        <dc:Bounds x="534" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_STM04_Error_Notify" bpmnElement="BoundaryError_STM04_Notify">
+        <dc:Bounds x="680" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_STM04_Timer_Notify" bpmnElement="BoundaryTimer_STM04_Notify">
+        <dc:Bounds x="724" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Edge_STM04_Start_To_Fetch" bpmnElement="Flow_STM04_Start_To_Fetch">
+        <di:waypoint x="86" y="218" />
+        <di:waypoint x="160" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_STM04_Fetch_To_Gateway" bpmnElement="Flow_STM04_Fetch_To_Gateway">
+        <di:waypoint x="280" y="218" />
+        <di:waypoint x="350" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_STM04_HasData" bpmnElement="Flow_STM04_HasData">
+        <di:waypoint x="400" y="213" />
+        <di:waypoint x="470" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_STM04_PDF_To_Notify" bpmnElement="Flow_STM04_PDF_To_Notify">
+        <di:waypoint x="590" y="218" />
+        <di:waypoint x="660" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_STM04_Notify_To_End" bpmnElement="Flow_STM04_Success">
+        <di:waypoint x="780" y="218" />
+        <di:waypoint x="850" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_STM04_NoData" bpmnElement="Flow_STM04_NoData">
+        <di:waypoint x="375" y="238" />
+        <di:waypoint x="375" y="340" />
+        <di:waypoint x="868" y="340" />
+        <di:waypoint x="868" y="336" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_STM04_Error_Fetch" bpmnElement="Flow_STM04_Error_Fetch">
+        <di:waypoint x="198" y="294" />
+        <di:waypoint x="198" y="380" />
+        <di:waypoint x="868" y="380" />
+        <di:waypoint x="868" y="336" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_STM04_Timer_Fetch" bpmnElement="Flow_STM04_Timer_Fetch">
+        <di:waypoint x="242" y="294" />
+        <di:waypoint x="242" y="400" />
+        <di:waypoint x="868" y="400" />
+        <di:waypoint x="868" y="336" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_STM04_Error_PDF" bpmnElement="Flow_STM04_Error_PDF">
+        <di:waypoint x="508" y="294" />
+        <di:waypoint x="508" y="380" />
+        <di:waypoint x="868" y="380" />
+        <di:waypoint x="868" y="336" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_STM04_Timer_PDF" bpmnElement="Flow_STM04_Timer_PDF">
+        <di:waypoint x="552" y="294" />
+        <di:waypoint x="552" y="400" />
+        <di:waypoint x="868" y="400" />
+        <di:waypoint x="868" y="336" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_STM04_Error_Notify" bpmnElement="Flow_STM04_Error_Notify">
+        <di:waypoint x="698" y="294" />
+        <di:waypoint x="698" y="380" />
+        <di:waypoint x="868" y="380" />
+        <di:waypoint x="868" y="336" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_STM04_Timer_Notify" bpmnElement="Flow_STM04_Timer_Notify">
+        <di:waypoint x="742" y="294" />
+        <di:waypoint x="742" y="400" />
+        <di:waypoint x="868" y="400" />
+        <di:waypoint x="868" y="336" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

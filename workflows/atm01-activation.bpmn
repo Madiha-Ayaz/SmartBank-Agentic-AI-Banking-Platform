@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_Atm01Activation" targetNamespace="http://smartbank.ai/bpmn" exporter="SmartBank Maestro Designer" exporterVersion="1.0">
+  <bpmn:process id="Atm01Activation" name="ATM Card Activation" isExecutable="true" processType="Private">
+    <bpmn:extensions>
+      <bpmn:property id="namespace" value="http://smartbank.ai/atm" />
+      <bpmn:property id="version" value="1.0.0" />
+      <bpmn:property id="riskLevel" value="Low" />
+      <bpmn:property id="requiresApproval" value="false" />
+      <bpmn:property id="description" value="Activates ATM card for a customer account. Low-risk automated process." />
+    </bpmn:extensions>
+
+    <!-- Process Variables -->
+    <bpmn:property id="caseId" name="caseId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="customerId" name="customerId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="requestPayload" name="requestPayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="responsePayload" name="responsePayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="cardNumber" name="cardNumber" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="activationStatus" name="activationStatus" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="cardExpiryDate" name="cardExpiryDate" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="errorCode" name="errorCode" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="retryCount" name="retryCount" itemSubjectRef="ItemDef_Int" />
+
+    <bpmn:itemDefinition id="ItemDef_String" structureRef="xsd:string" />
+    <bpmn:itemDefinition id="ItemDef_Int" structureRef="xsd:int" />
+    <bpmn:itemDefinition id="ItemDef_Boolean" structureRef="xsd:boolean" />
+
+    <!-- Start Event -->
+    <bpmn:startEvent id="StartEvent_ATM01" name="ATM Card Activation Request">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="signal" />
+        <bpmn:property id="signalName" value="SmartBank.ATM01.Activate" />
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+
+    <!-- Service Task 1: Validate Card Details -->
+    <bpmn:serviceTask id="ServiceTask_ValidateCard" name="Validate Card Details" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/card/validate" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="15000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="Card Validation Service" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_ValidateCard" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_ATM01_Validate">
+        <bpmn:targetRef>DataInput_ValidateCard</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId, cardNumber}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_ValidateCard</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_ATM01_Validate">
+        <bpmn:sourceRef>DataOutput_ValidateCard</bpmn:sourceRef>
+        <bpmn:targetRef>activationStatus</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_ValidateCard</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">activationStatus</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <!-- Error Boundary for Retry -->
+    <bpmn:boundaryEvent id="BoundaryError_ATM01_Validate" attachedToRef="ServiceTask_ValidateCard">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_ATM01_Validate" errorRef="Error_CardValidation" />
+    </bpmn:boundaryEvent>
+
+    <!-- Timer Boundary for SLA -->
+    <bpmn:boundaryEvent id="BoundaryTimer_ATM01_Validate" attachedToRef="ServiceTask_ValidateCard">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_ATM01_Validate">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT30S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Card Valid? -->
+    <bpmn:exclusiveGateway id="Gateway_CardValid" name="Card Valid?" gatewayDirection="Diverging" />
+
+    <!-- Sequence: Start -> Validate -->
+    <bpmn:sequenceFlow id="Flow_ATM01_Start_To_Validate" name="" sourceRef="StartEvent_ATM01" targetRef="ServiceTask_ValidateCard" />
+
+    <!-- Sequence: Validate -> Gateway -->
+    <bpmn:sequenceFlow id="Flow_ATM01_Validate_To_Gateway" name="" sourceRef="ServiceTask_ValidateCard" targetRef="Gateway_CardValid" />
+
+    <!-- Service Task 2: Activate Card (if valid) -->
+    <bpmn:sequenceFlow id="Flow_ATM01_CardValid_Yes" name="Valid" sourceRef="Gateway_CardValid" targetRef="ServiceTask_ActivateCard">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">activationStatus = "Valid"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_ActivateCard" name="Activate ATM Card" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/card/activate" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="30000" />
+        <bpmn:property id="slaTimeout" value="PT1M" />
+        <bpmn:property id="performer" value="Card Activation Service" />
+        <bpmn:property id="inputs" value="cardNumber, customerId, cardExpiryDate" />
+        <bpmn:property id="outputs" value="responsePayload" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_ActivateCard" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_ATM01_Activate">
+        <bpmn:targetRef>DataInput_ActivateCard</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{cardNumber, customerId, cardExpiryDate}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_ActivateCard</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_ATM01_Activate">
+        <bpmn:sourceRef>DataOutput_ActivateCard</bpmn:sourceRef>
+        <bpmn:targetRef>responsePayload</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_ActivateCard</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">responsePayload</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <!-- Error Boundary for Activate -->
+    <bpmn:boundaryEvent id="BoundaryError_ATM01_Activate" attachedToRef="ServiceTask_ActivateCard">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_ATM01_Activate" errorRef="Error_CardActivation" />
+    </bpmn:boundaryEvent>
+
+    <!-- Timer Boundary for Activate -->
+    <bpmn:boundaryEvent id="BoundaryTimer_ATM01_Activate" attachedToRef="ServiceTask_ActivateCard">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_ATM01_Activate">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT1M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Activation Success? -->
+    <bpmn:exclusiveGateway id="Gateway_ActivationSuccess" name="Success?" gatewayDirection="Diverging" />
+
+    <!-- Sequence: Activate -> Activation Gateway -->
+    <bpmn:sequenceFlow id="Flow_ATM01_Activate_To_Gateway" name="" sourceRef="ServiceTask_ActivateCard" targetRef="Gateway_ActivationSuccess" />
+
+    <!-- End Event: Success -->
+    <bpmn:sequenceFlow id="Flow_ATM01_Success" name="Success" sourceRef="Gateway_ActivationSuccess" targetRef="EndEvent_ATM01_Success">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">activationStatus = "Activated" OrElse IsNothing(errorCode)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_ATM01_Success" name="Card Activated">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.ATM01.Activated" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- Invalid Card Path -->
+    <bpmn:sequenceFlow id="Flow_ATM01_Invalid" name="Invalid" sourceRef="Gateway_CardValid" targetRef="EndEvent_ATM01_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">activationStatus = "Invalid"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <!-- Failed Path -->
+    <bpmn:sequenceFlow id="Flow_ATM01_Failed" name="Failed" sourceRef="Gateway_ActivationSuccess" targetRef="EndEvent_ATM01_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">Not IsNothing(errorCode)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_ATM01_Failed" name="Activation Failed">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.ATM01.Failed" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- Error Boundary Flows -->
+    <bpmn:sequenceFlow id="Flow_ATM01_Error_Validate_To_End" name="Validation Error" sourceRef="BoundaryError_ATM01_Validate" targetRef="EndEvent_ATM01_Failed" />
+    <bpmn:sequenceFlow id="Flow_ATM01_Timer_Validate_To_End" name="SLA Breach" sourceRef="BoundaryTimer_ATM01_Validate" targetRef="EndEvent_ATM01_Failed" />
+    <bpmn:sequenceFlow id="Flow_ATM01_Error_Activate_To_End" name="Activation Error" sourceRef="BoundaryError_ATM01_Activate" targetRef="EndEvent_ATM01_Failed" />
+    <bpmn:sequenceFlow id="Flow_ATM01_Timer_Activate_To_End" name="Activation SLA Breach" sourceRef="BoundaryTimer_ATM01_Activate" targetRef="EndEvent_ATM01_Failed" />
+
+    <!-- Error Definitions -->
+    <bpmn:error id="Error_CardValidation" name="CardValidationError" errorCode="ERR_CARD_VALIDATION" />
+    <bpmn:error id="Error_CardActivation" name="CardActivationError" errorCode="ERR_CARD_ACTIVATION" />
+  </bpmn:process>
+
+  <!-- Interface and Operations -->
+  <bpmn:interface id="Interface_ATM01" name="ATM Card API Interface">
+    <bpmn:operation id="Operation_ValidateCard" name="ValidateCard" implementationRef="SmartBank.API.ValidateCard">
+      <bpmn:inMessageRef>Message_ValidateCardRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_ValidateCardResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_ActivateCard" name="ActivateCard" implementationRef="SmartBank.API.ActivateCard">
+      <bpmn:inMessageRef>Message_ActivateCardRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_ActivateCardResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+  </bpmn:interface>
+
+  <!-- Message Definitions -->
+  <bpmn:message id="Message_ValidateCardRequest" name="SmartBank.ValidateCardRequest.v1" />
+  <bpmn:message id="Message_ValidateCardResponse" name="SmartBank.ValidateCardResponse.v1" />
+  <bpmn:message id="Message_ActivateCardRequest" name="SmartBank.ActivateCardRequest.v1" />
+  <bpmn:message id="Message_ActivateCardResponse" name="SmartBank.ActivateCardResponse.v1" />
+
+  <!-- Data Inputs/Outputs -->
+  <bpmn:dataInput id="DataInput_ValidateCard" name="ValidateCardInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_ValidateCard" name="ValidateCardOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_ActivateCard" name="ActivateCardInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_ActivateCard" name="ActivateCardOutput" itemSubjectRef="ItemDef_String" />
+
+  <!-- BPMN Diagram -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_ATM01" name="ATM Card Activation Diagram">
+    <bpmndi:BPMNPlane id="BPMNPlane_ATM01" bpmnElement="Atm01Activation">
+      <bpmndi:BPMNShape id="Shape_ATM01_Start" bpmnElement="StartEvent_ATM01">
+        <dc:Bounds x="50" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_ATM01_Validate" bpmnElement="ServiceTask_ValidateCard">
+        <dc:Bounds x="160" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_ATM01_Gateway_Valid" bpmnElement="Gateway_CardValid">
+        <dc:Bounds x="350" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_ATM01_Activate" bpmnElement="ServiceTask_ActivateCard">
+        <dc:Bounds x="480" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_ATM01_Gateway_Success" bpmnElement="Gateway_ActivationSuccess">
+        <dc:Bounds x="670" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_ATM01_End_Success" bpmnElement="EndEvent_ATM01_Success">
+        <dc:Bounds x="800" y="150" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_ATM01_End_Failed" bpmnElement="EndEvent_ATM01_Failed">
+        <dc:Bounds x="800" y="250" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- Boundary Events -->
+      <bpmndi:BPMNShape id="Shape_ATM01_Error_Validate" bpmnElement="BoundaryError_ATM01_Validate">
+        <dc:Bounds x="180" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_ATM01_Timer_Validate" bpmnElement="BoundaryTimer_ATM01_Validate">
+        <dc:Bounds x="224" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_ATM01_Error_Activate" bpmnElement="BoundaryError_ATM01_Activate">
+        <dc:Bounds x="500" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_ATM01_Timer_Activate" bpmnElement="BoundaryTimer_ATM01_Activate">
+        <dc:Bounds x="544" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- Edges -->
+      <bpmndi:BPMNEdge id="Edge_ATM01_Start_To_Validate" bpmnElement="Flow_ATM01_Start_To_Validate">
+        <di:waypoint x="86" y="218" />
+        <di:waypoint x="160" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_ATM01_Validate_To_Gateway" bpmnElement="Flow_ATM01_Validate_To_Gateway">
+        <di:waypoint x="280" y="218" />
+        <di:waypoint x="350" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_ATM01_Valid_Yes" bpmnElement="Flow_ATM01_CardValid_Yes">
+        <di:waypoint x="400" y="213" />
+        <di:waypoint x="480" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_ATM01_Activate_To_Gateway" bpmnElement="Flow_ATM01_Activate_To_Gateway">
+        <di:waypoint x="600" y="218" />
+        <di:waypoint x="670" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_ATM01_Success" bpmnElement="Flow_ATM01_Success">
+        <di:waypoint x="720" y="213" />
+        <di:waypoint x="800" y="168" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_ATM01_Invalid" bpmnElement="Flow_ATM01_Invalid">
+        <di:waypoint x="375" y="238" />
+        <di:waypoint x="375" y="310" />
+        <di:waypoint x="818" y="310" />
+        <di:waypoint x="818" y="286" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_ATM01_Failed" bpmnElement="Flow_ATM01_Failed">
+        <di:waypoint x="695" y="238" />
+        <di:waypoint x="695" y="310" />
+        <di:waypoint x="818" y="310" />
+        <di:waypoint x="818" y="286" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_ATM01_Error_Validate" bpmnElement="Flow_ATM01_Error_Validate_To_End">
+        <di:waypoint x="198" y="294" />
+        <di:waypoint x="198" y="350" />
+        <di:waypoint x="818" y="350" />
+        <di:waypoint x="818" y="286" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_ATM01_Timer_Validate" bpmnElement="Flow_ATM01_Timer_Validate_To_End">
+        <di:waypoint x="242" y="294" />
+        <di:waypoint x="242" y="370" />
+        <di:waypoint x="818" y="370" />
+        <di:waypoint x="818" y="286" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_ATM01_Error_Activate" bpmnElement="Flow_ATM01_Error_Activate_To_End">
+        <di:waypoint x="518" y="294" />
+        <di:waypoint x="518" y="350" />
+        <di:waypoint x="818" y="350" />
+        <di:waypoint x="818" y="286" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_ATM01_Timer_Activate" bpmnElement="Flow_ATM01_Timer_Activate_To_End">
+        <di:waypoint x="562" y="294" />
+        <di:waypoint x="562" y="370" />
+        <di:waypoint x="818" y="370" />
+        <di:waypoint x="818" y="286" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

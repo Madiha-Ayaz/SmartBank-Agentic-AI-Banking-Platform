@@ -1,0 +1,481 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_Nic06IdUpdate" targetNamespace="http://smartbank.ai/bpmn" exporter="SmartBank Maestro Designer" exporterVersion="1.0">
+  <bpmn:process id="Nic06IdUpdate" name="ID Update" isExecutable="true" processType="Private">
+    <bpmn:extensions>
+      <bpmn:property id="namespace" value="http://smartbank.ai/identity" />
+      <bpmn:property id="version" value="1.0.0" />
+      <bpmn:property id="riskLevel" value="High" />
+      <bpmn:property id="requiresApproval" value="true" />
+      <bpmn:property id="description" value="Updates customer ID document. High-risk process requiring manager approval and OCR verification." />
+    </bpmn:extensions>
+
+    <bpmn:property id="caseId" name="caseId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="customerId" name="customerId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="requestPayload" name="requestPayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="responsePayload" name="responsePayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="documentImageUrl" name="documentImageUrl" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="ocrResult" name="ocrResult" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="documentType" name="documentType" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="approvalStatus" name="approvalStatus" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="verificationScore" name="verificationScore" itemSubjectRef="ItemDef_Double" />
+    <bpmn:property id="errorCode" name="errorCode" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="retryCount" name="retryCount" itemSubjectRef="ItemDef_Int" />
+
+    <bpmn:itemDefinition id="ItemDef_String" structureRef="xsd:string" />
+    <bpmn:itemDefinition id="ItemDef_Double" structureRef="xsd:double" />
+    <bpmn:itemDefinition id="ItemDef_Int" structureRef="xsd:int" />
+
+    <bpmn:startEvent id="StartEvent_NIC06" name="ID Update Request">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="signal" />
+        <bpmn:property id="signalName" value="SmartBank.NIC06.Update" />
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+
+    <!-- Service Task 1: OCR Document Scan -->
+    <bpmn:serviceTask id="ServiceTask_OCRScan" name="OCR Document Scan" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/ocr/scan" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="60000" />
+        <bpmn:property id="slaTimeout" value="PT2M" />
+        <bpmn:property id="performer" value="OCR Service" />
+        <bpmn:property id="inputs" value="documentImageUrl, documentType" />
+        <bpmn:property id="outputs" value="ocrResult, verificationScore" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_OCRScan" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_NIC06_OCR">
+        <bpmn:targetRef>DataInput_OCRScan</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{documentImageUrl, documentType}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_OCRScan</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_NIC06_OCR">
+        <bpmn:sourceRef>DataOutput_OCRScan</bpmn:sourceRef>
+        <bpmn:targetRef>ocrResult</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_OCRScan</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">ocrResult</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_NIC06_OCR" attachedToRef="ServiceTask_OCRScan">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_NIC06_OCR" errorRef="Error_OCRScan" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_NIC06_OCR" attachedToRef="ServiceTask_OCRScan">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_NIC06_OCR">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT2M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: OCR Successful? -->
+    <bpmn:exclusiveGateway id="Gateway_OCRSuccess" name="OCR Success?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_NIC06_Start_To_OCR" name="" sourceRef="StartEvent_NIC06" targetRef="ServiceTask_OCRScan" />
+    <bpmn:sequenceFlow id="Flow_NIC06_OCR_To_Gateway" name="" sourceRef="ServiceTask_OCRScan" targetRef="Gateway_OCRSuccess" />
+
+    <!-- Service Task 2: Verify Identity -->
+    <bpmn:sequenceFlow id="Flow_NIC06_OCRValid" name="OCR Valid" sourceRef="Gateway_OCRSuccess" targetRef="ServiceTask_VerifyID">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath"><![CDATA[verificationScore >= 0.8]]></bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_VerifyID" name="Verify Identity" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/identity/verify" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="20000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="Identity Verification Service" />
+        <bpmn:property id="inputs" value="customerId, ocrResult, verificationScore" />
+        <bpmn:property id="outputs" value="approvalStatus" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_VerifyID" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_NIC06_Verify">
+        <bpmn:targetRef>DataInput_VerifyID</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId, ocrResult, verificationScore}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_VerifyID</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_NIC06_Verify">
+        <bpmn:sourceRef>DataOutput_VerifyID</bpmn:sourceRef>
+        <bpmn:targetRef>approvalStatus</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_VerifyID</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">approvalStatus</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_NIC06_Verify" attachedToRef="ServiceTask_VerifyID">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_NIC06_Verify" errorRef="Error_IdentityVerify" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_NIC06_Verify" attachedToRef="ServiceTask_VerifyID">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_NIC06_Verify">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT30S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Identity Verified? -->
+    <bpmn:exclusiveGateway id="Gateway_IdentityVerified" name="Identity Verified?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_NIC06_Verify_To_Gateway" name="" sourceRef="ServiceTask_VerifyID" targetRef="Gateway_IdentityVerified" />
+
+    <!-- User Task: Manager Approval -->
+    <bpmn:sequenceFlow id="Flow_NIC06_Verified" name="Verified" sourceRef="Gateway_IdentityVerified" targetRef="UserTask_ManagerApproval">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "Verified"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:userTask id="UserTask_ManagerApproval" name="Manager Approval" implementation="UiPath.Persona.Manager">
+      <bpmn:extensionElements>
+        <bpmn:property id="taskQueue" value="SmartBank.ManagerApproval.IDUpdate" />
+        <bpmn:property id="priority" value="High" />
+        <bpmn:property id="slaTimeout" value="PT4H" />
+        <bpmn:property id="escalationAfter" value="PT1H" />
+        <bpmn:property id="formType" value="SmartBank.IDUpdateApproval.v1" />
+        <bpmn:property id="performer" value="Branch Manager" />
+        <bpmn:property id="inputs" value="customerId, documentType, ocrResult, verificationScore" />
+        <bpmn:property id="outputs" value="approvalStatus" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_NIC06Approval" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_NIC06_Approval">
+        <bpmn:targetRef>DataInput_Approval</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId, documentType, ocrResult, verificationScore}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_Approval</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_NIC06_Approval">
+        <bpmn:sourceRef>DataOutput_Approval</bpmn:sourceRef>
+        <bpmn:targetRef>approvalStatus</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_Approval</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">approvalStatus</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:userTask>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_NIC06_Approval" attachedToRef="UserTask_ManagerApproval">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_NIC06_Approval">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT4H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Approved? -->
+    <bpmn:exclusiveGateway id="Gateway_Approved" name="Approved?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_NIC06_Approval_To_Gateway" name="" sourceRef="UserTask_ManagerApproval" targetRef="Gateway_Approved" />
+
+    <!-- Service Task 3: Update ID Record -->
+    <bpmn:sequenceFlow id="Flow_NIC06_Approved" name="Approved" sourceRef="Gateway_Approved" targetRef="ServiceTask_UpdateID">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "Approved"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_UpdateID" name="Update ID Record" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/customer/id-update" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="20000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="Customer Profile Service" />
+        <bpmn:property id="inputs" value="customerId, ocrResult, documentType" />
+        <bpmn:property id="outputs" value="responsePayload" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_UpdateID" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_NIC06_Update">
+        <bpmn:targetRef>DataInput_UpdateID</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId, ocrResult, documentType}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_UpdateID</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_NIC06_Update">
+        <bpmn:sourceRef>DataOutput_UpdateID</bpmn:sourceRef>
+        <bpmn:targetRef>responsePayload</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_UpdateID</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">responsePayload</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_NIC06_Update" attachedToRef="ServiceTask_UpdateID">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_NIC06_Update" errorRef="Error_IDUpdate" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_NIC06_Update" attachedToRef="ServiceTask_UpdateID">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_NIC06_Update">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT30S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Update Success? -->
+    <bpmn:exclusiveGateway id="Gateway_UpdateSuccess" name="Update Success?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_NIC06_Update_To_Gateway" name="" sourceRef="ServiceTask_UpdateID" targetRef="Gateway_UpdateSuccess" />
+
+    <bpmn:sequenceFlow id="Flow_NIC06_Success" name="Updated" sourceRef="Gateway_UpdateSuccess" targetRef="EndEvent_NIC06_Success">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">IsNothing(errorCode)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_NIC06_Success" name="ID Updated">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.NIC06.Updated" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- Failure Paths -->
+    <bpmn:sequenceFlow id="Flow_NIC06_OCR_Failed" name="OCR Low" sourceRef="Gateway_OCRSuccess" targetRef="EndEvent_NIC06_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath"><![CDATA[verificationScore < 0.8]]></bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_NIC06_NotVerified" name="Not Verified" sourceRef="Gateway_IdentityVerified" targetRef="EndEvent_NIC06_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "NotVerified"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_NIC06_Rejected" name="Rejected" sourceRef="Gateway_Approved" targetRef="EndEvent_NIC06_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "Rejected"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_NIC06_UpdateFailed" name="Failed" sourceRef="Gateway_UpdateSuccess" targetRef="EndEvent_NIC06_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">Not IsNothing(errorCode)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_NIC06_Failed" name="ID Update Failed">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.NIC06.Failed" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_NIC06_Error_OCR" name="OCR Error" sourceRef="BoundaryError_NIC06_OCR" targetRef="EndEvent_NIC06_Failed" />
+    <bpmn:sequenceFlow id="Flow_NIC06_Timer_OCR" name="OCR SLA" sourceRef="BoundaryTimer_NIC06_OCR" targetRef="EndEvent_NIC06_Failed" />
+    <bpmn:sequenceFlow id="Flow_NIC06_Error_Verify" name="Verify Error" sourceRef="BoundaryError_NIC06_Verify" targetRef="EndEvent_NIC06_Failed" />
+    <bpmn:sequenceFlow id="Flow_NIC06_Timer_Verify" name="Verify SLA" sourceRef="BoundaryTimer_NIC06_Verify" targetRef="EndEvent_NIC06_Failed" />
+    <bpmn:sequenceFlow id="Flow_NIC06_Timer_Approval" name="Approval SLA" sourceRef="BoundaryTimer_NIC06_Approval" targetRef="EndEvent_NIC06_Failed" />
+    <bpmn:sequenceFlow id="Flow_NIC06_Error_Update" name="Update Error" sourceRef="BoundaryError_NIC06_Update" targetRef="EndEvent_NIC06_Failed" />
+    <bpmn:sequenceFlow id="Flow_NIC06_Timer_Update" name="Update SLA" sourceRef="BoundaryTimer_NIC06_Update" targetRef="EndEvent_NIC06_Failed" />
+
+    <bpmn:error id="Error_OCRScan" name="OCRScanError" errorCode="ERR_OCR_SCAN" />
+    <bpmn:error id="Error_IdentityVerify" name="IdentityVerifyError" errorCode="ERR_IDENTITY_VERIFY" />
+    <bpmn:error id="Error_IDUpdate" name="IDUpdateError" errorCode="ERR_ID_UPDATE" />
+  </bpmn:process>
+
+  <bpmn:interface id="Interface_NIC06" name="ID Update API Interface">
+    <bpmn:operation id="Operation_OCRScan" name="OCRScan" implementationRef="SmartBank.API.OCRScan">
+      <bpmn:inMessageRef>Message_OCRScanRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_OCRScanResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_VerifyID" name="VerifyID" implementationRef="SmartBank.API.VerifyID">
+      <bpmn:inMessageRef>Message_VerifyIDRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_VerifyIDResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_NIC06Approval" name="IDUpdateApproval" implementationRef="SmartBank.UI.IDUpdateApproval">
+      <bpmn:inMessageRef>Message_NIC06ApprovalRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_NIC06ApprovalResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_UpdateID" name="UpdateID" implementationRef="SmartBank.API.UpdateID">
+      <bpmn:inMessageRef>Message_UpdateIDRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_UpdateIDResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+  </bpmn:interface>
+
+  <bpmn:message id="Message_OCRScanRequest" name="SmartBank.OCRScanRequest.v1" />
+  <bpmn:message id="Message_OCRScanResponse" name="SmartBank.OCRScanResponse.v1" />
+  <bpmn:message id="Message_VerifyIDRequest" name="SmartBank.VerifyIDRequest.v1" />
+  <bpmn:message id="Message_VerifyIDResponse" name="SmartBank.VerifyIDResponse.v1" />
+  <bpmn:message id="Message_NIC06ApprovalRequest" name="SmartBank.IDUpdateApprovalRequest.v1" />
+  <bpmn:message id="Message_NIC06ApprovalResponse" name="SmartBank.IDUpdateApprovalResponse.v1" />
+  <bpmn:message id="Message_UpdateIDRequest" name="SmartBank.UpdateIDRequest.v1" />
+  <bpmn:message id="Message_UpdateIDResponse" name="SmartBank.UpdateIDResponse.v1" />
+
+  <bpmn:dataInput id="DataInput_OCRScan" name="OCRScanInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_OCRScan" name="OCRScanOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_VerifyID" name="VerifyIDInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_VerifyID" name="VerifyIDOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_Approval" name="ApprovalInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_Approval" name="ApprovalOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_UpdateID" name="UpdateIDInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_UpdateID" name="UpdateIDOutput" itemSubjectRef="ItemDef_String" />
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_NIC06" name="ID Update Diagram">
+    <bpmndi:BPMNPlane id="BPMNPlane_NIC06" bpmnElement="Nic06IdUpdate">
+      <bpmndi:BPMNShape id="Shape_NIC06_Start" bpmnElement="StartEvent_NIC06">
+        <dc:Bounds x="50" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_OCR" bpmnElement="ServiceTask_OCRScan">
+        <dc:Bounds x="160" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_Gateway_OCR" bpmnElement="Gateway_OCRSuccess">
+        <dc:Bounds x="350" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_Verify" bpmnElement="ServiceTask_VerifyID">
+        <dc:Bounds x="470" y="120" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_Gateway_Ident" bpmnElement="Gateway_IdentityVerified">
+        <dc:Bounds x="660" y="130" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_Approval" bpmnElement="UserTask_ManagerApproval">
+        <dc:Bounds x="480" y="250" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_Gateway_Approved" bpmnElement="Gateway_Approved">
+        <dc:Bounds x="670" y="260" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_Update" bpmnElement="ServiceTask_UpdateID">
+        <dc:Bounds x="800" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_Gateway_Update" bpmnElement="Gateway_UpdateSuccess">
+        <dc:Bounds x="990" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_End_Success" bpmnElement="EndEvent_NIC06_Success">
+        <dc:Bounds x="1120" y="150" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_End_Failed" bpmnElement="EndEvent_NIC06_Failed">
+        <dc:Bounds x="1120" y="270" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_NIC06_Error_OCR" bpmnElement="BoundaryError_NIC06_OCR">
+        <dc:Bounds x="180" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_Timer_OCR" bpmnElement="BoundaryTimer_NIC06_OCR">
+        <dc:Bounds x="224" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_Error_Verify" bpmnElement="BoundaryError_NIC06_Verify">
+        <dc:Bounds x="490" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_Timer_Verify" bpmnElement="BoundaryTimer_NIC06_Verify">
+        <dc:Bounds x="534" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_Timer_Approval" bpmnElement="BoundaryTimer_NIC06_Approval">
+        <dc:Bounds x="522" y="330" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_Error_Update" bpmnElement="BoundaryError_NIC06_Update">
+        <dc:Bounds x="820" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_NIC06_Timer_Update" bpmnElement="BoundaryTimer_NIC06_Update">
+        <dc:Bounds x="864" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Edge_NIC06_Start_To_OCR" bpmnElement="Flow_NIC06_Start_To_OCR">
+        <di:waypoint x="86" y="218" />
+        <di:waypoint x="160" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_OCR_To_Gateway" bpmnElement="Flow_NIC06_OCR_To_Gateway">
+        <di:waypoint x="280" y="218" />
+        <di:waypoint x="350" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_OCRValid" bpmnElement="Flow_NIC06_OCRValid">
+        <di:waypoint x="400" y="213" />
+        <di:waypoint x="400" y="160" />
+        <di:waypoint x="470" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Verify_To_Gateway" bpmnElement="Flow_NIC06_Verify_To_Gateway">
+        <di:waypoint x="590" y="160" />
+        <di:waypoint x="660" y="155" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Verified" bpmnElement="Flow_NIC06_Verified">
+        <di:waypoint x="685" y="180" />
+        <di:waypoint x="685" y="290" />
+        <di:waypoint x="600" y="290" />
+        <di:waypoint x="600" y="250" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Approval_To_Gateway" bpmnElement="Flow_NIC06_Approval_To_Gateway">
+        <di:waypoint x="600" y="290" />
+        <di:waypoint x="670" y="285" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Approved" bpmnElement="Flow_NIC06_Approved">
+        <di:waypoint x="720" y="285" />
+        <di:waypoint x="720" y="218" />
+        <di:waypoint x="800" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Update_To_Gateway" bpmnElement="Flow_NIC06_Update_To_Gateway">
+        <di:waypoint x="920" y="218" />
+        <di:waypoint x="990" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Success" bpmnElement="Flow_NIC06_Success">
+        <di:waypoint x="1040" y="213" />
+        <di:waypoint x="1120" y="168" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_OCR_Failed" bpmnElement="Flow_NIC06_OCR_Failed">
+        <di:waypoint x="375" y="238" />
+        <di:waypoint x="375" y="360" />
+        <di:waypoint x="1138" y="360" />
+        <di:waypoint x="1138" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_NotVerified" bpmnElement="Flow_NIC06_NotVerified">
+        <di:waypoint x="685" y="180" />
+        <di:waypoint x="685" y="360" />
+        <di:waypoint x="1138" y="360" />
+        <di:waypoint x="1138" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Rejected" bpmnElement="Flow_NIC06_Rejected">
+        <di:waypoint x="695" y="310" />
+        <di:waypoint x="695" y="380" />
+        <di:waypoint x="1138" y="380" />
+        <di:waypoint x="1138" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_UpdateFailed" bpmnElement="Flow_NIC06_UpdateFailed">
+        <di:waypoint x="1015" y="238" />
+        <di:waypoint x="1015" y="360" />
+        <di:waypoint x="1138" y="360" />
+        <di:waypoint x="1138" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Error_OCR" bpmnElement="Flow_NIC06_Error_OCR">
+        <di:waypoint x="198" y="294" />
+        <di:waypoint x="198" y="420" />
+        <di:waypoint x="1138" y="420" />
+        <di:waypoint x="1138" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Timer_OCR" bpmnElement="Flow_NIC06_Timer_OCR">
+        <di:waypoint x="242" y="294" />
+        <di:waypoint x="242" y="440" />
+        <di:waypoint x="1138" y="440" />
+        <di:waypoint x="1138" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Error_Verify" bpmnElement="Flow_NIC06_Error_Verify">
+        <di:waypoint x="508" y="200" />
+        <di:waypoint x="508" y="400" />
+        <di:waypoint x="1138" y="400" />
+        <di:waypoint x="1138" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Timer_Verify" bpmnElement="Flow_NIC06_Timer_Verify">
+        <di:waypoint x="552" y="200" />
+        <di:waypoint x="552" y="420" />
+        <di:waypoint x="1138" y="420" />
+        <di:waypoint x="1138" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Timer_Approval" bpmnElement="Flow_NIC06_Timer_Approval">
+        <di:waypoint x="540" y="330" />
+        <di:waypoint x="540" y="440" />
+        <di:waypoint x="1138" y="440" />
+        <di:waypoint x="1138" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Error_Update" bpmnElement="Flow_NIC06_Error_Update">
+        <di:waypoint x="838" y="294" />
+        <di:waypoint x="838" y="420" />
+        <di:waypoint x="1138" y="420" />
+        <di:waypoint x="1138" y="306" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NIC06_Timer_Update" bpmnElement="Flow_NIC06_Timer_Update">
+        <di:waypoint x="882" y="294" />
+        <di:waypoint x="882" y="440" />
+        <di:waypoint x="1138" y="440" />
+        <di:waypoint x="1138" y="306" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

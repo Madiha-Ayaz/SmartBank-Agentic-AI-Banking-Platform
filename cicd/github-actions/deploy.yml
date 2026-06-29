@@ -1,0 +1,297 @@
+name: Deploy Pipeline
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  STAGING_URL: "https://staging.smartbank.ai"
+  PRODUCTION_URL: "https://app.smartbank.ai"
+  HEALTH_CHECK_RETRIES: 12
+  HEALTH_CHECK_INTERVAL: 10
+
+jobs:
+  test:
+    name: Run CI Tests
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  build:
+    name: Build Deployment Artifacts
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-deploy-build-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-deploy-build-
+
+      - name: Install dependencies
+        run: pip install build wheel
+
+      - name: Build all packages
+        run: |
+          python -m build agents/
+          python -m build document-ai/
+          python -m build robots/
+
+      - name: Create deployment manifest
+        run: |
+          $manifest = @{
+            version     = "${{ github.ref_name }}"
+            commit      = "${{ github.sha }}"
+            builtAt     = (Get-Date -Format "o")
+            artifacts   = @(
+              "agents/dist/*.whl",
+              "document-ai/dist/*.whl",
+              "robots/dist/*.whl"
+            )
+          }
+          $manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath "deploy-manifest.json"
+          Write-Host "Manifest:"
+          Get-Content -LiteralPath "deploy-manifest.json"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-artifacts-${{ github.ref_name }}
+          path: |
+            agents/dist/
+            document-ai/dist/
+            robots/dist/
+            deploy-manifest.json
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build]
+    environment:
+      name: staging
+      url: ${{ env.STAGING_URL }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: deployment-artifacts-${{ github.ref_name }}
+          path: artifacts/
+
+      - name: Read deployment manifest
+        run: |
+          $manifest = Get-Content -LiteralPath "artifacts/deploy-manifest.json" -Raw | ConvertFrom-Json
+          Write-Host "Deploying version: $($manifest.version)"
+          Write-Host "Commit: $($manifest.commit)"
+
+      - name: Deploy agents to staging
+        run: |
+          Write-Host "Deploying agents/ to staging..."
+          # Replace with actual deployment command
+          # e.g. scp, aws s3 sync, azure webapp deploy, etc.
+          New-Item -ItemType Directory -Path "staging-deploy" -Force
+          Copy-Item -LiteralPath "artifacts/agents/dist/*.whl" -Destination "staging-deploy/" -Force
+
+      - name: Deploy document-ai to staging
+        run: |
+          Write-Host "Deploying document-ai/ to staging..."
+          Copy-Item -LiteralPath "artifacts/document-ai/dist/*.whl" -Destination "staging-deploy/" -Force
+
+      - name: Deploy robots to staging
+        run: |
+          Write-Host "Deploying robots/ to staging..."
+          Copy-Item -LiteralPath "artifacts/robots/dist/*.whl" -Destination "staging-deploy/" -Force
+
+      - name: Run health check against staging
+        id: health-check-staging
+        run: |
+          $retries = $env:HEALTH_CHECK_RETRIES
+          $interval = $env:HEALTH_CHECK_INTERVAL
+          $url = "$env:STAGING_URL/health"
+          for ($i = 0; $i -lt $retries; $i++) {
+            try {
+              $response = Invoke-WebRequest -Uri $url -TimeoutSec 10 -UseBasicParsing
+              if ($response.StatusCode -eq 200) {
+                Write-Host "Health check passed ($($i+1)/$retries)"
+                exit 0
+              }
+            } catch {
+              Write-Host "Health check attempt $($i+1)/$retries failed: $($_.Exception.Message)"
+            }
+            if ($i -lt $retries - 1) { Start-Sleep -Seconds $interval }
+          }
+          Write-Host "Health check failed after $retries retries"
+          exit 1
+
+      - name: Tag staging deployment
+        run: |
+          $tag = "staging-${{ github.ref_name }}-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+          Write-Host "Deployment tag: $tag"
+          # Optionally push tag: git tag $tag && git push origin $tag
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    environment:
+      name: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-int-test-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-int-test-
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-cov requests
+          if (Test-Path requirements.txt) { pip install -r requirements.txt }
+
+      - name: Run integration tests against staging
+        env:
+          API_BASE_URL: ${{ env.STAGING_URL }}
+          SMARTBANK_ENV: staging
+        run: |
+          pytest tests/integration/ \
+            --junitxml=integration-results.xml \
+            --cov=agents --cov=document_ai --cov=robots \
+            --cov-report=term \
+            -v
+
+      - name: Upload integration test results
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: integration-test-results-${{ github.ref_name }}
+          path: integration-results.xml
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [integration-tests]
+    environment:
+      name: production
+      url: ${{ env.PRODUCTION_URL }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: deployment-artifacts-${{ github.ref_name }}
+          path: artifacts/
+
+      - name: Read deployment manifest
+        run: |
+          $manifest = Get-Content -LiteralPath "artifacts/deploy-manifest.json" -Raw | ConvertFrom-Json
+          Write-Host "Promoting to production: $($manifest.version)"
+
+      - name: Deploy agents to production
+        run: |
+          Write-Host "Deploying agents/ to production..."
+          New-Item -ItemType Directory -Path "prod-deploy" -Force
+          Copy-Item -LiteralPath "artifacts/agents/dist/*.whl" -Destination "prod-deploy/" -Force
+
+      - name: Deploy document-ai to production
+        run: |
+          Write-Host "Deploying document-ai/ to production..."
+          Copy-Item -LiteralPath "artifacts/document-ai/dist/*.whl" -Destination "prod-deploy/" -Force
+
+      - name: Deploy robots to production
+        run: |
+          Write-Host "Deploying robots/ to production..."
+          Copy-Item -LiteralPath "artifacts/robots/dist/*.whl" -Destination "prod-deploy/" -Force
+
+      - name: Run health check against production
+        id: health-check-production
+        run: |
+          $retries = $env:HEALTH_CHECK_RETRIES
+          $interval = $env:HEALTH_CHECK_INTERVAL
+          $url = "$env:PRODUCTION_URL/health"
+          for ($i = 0; $i -lt $retries; $i++) {
+            try {
+              $response = Invoke-WebRequest -Uri $url -TimeoutSec 10 -UseBasicParsing
+              if ($response.StatusCode -eq 200) {
+                Write-Host "Health check passed ($($i+1)/$retries)"
+                exit 0
+              }
+            } catch {
+              Write-Host "Health check attempt $($i+1)/$retries failed: $($_.Exception.Message)"
+            }
+            if ($i -lt $retries - 1) { Start-Sleep -Seconds $interval }
+          }
+          Write-Host "Health check failed after $retries retries"
+          exit 1
+
+      - name: Tag production release
+        run: |
+          $tag = "production-${{ github.ref_name }}-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+          Write-Host "Release tag: $tag"
+          # Optionally push tag: git tag $tag && git push origin $tag
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            ## SmartBank Release ${{ github.ref_name }}
+
+            **Deployed to production:** $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
+
+            ### Artifacts
+            - agents/
+            - document-ai/
+            - robots/
+
+            ### Verification
+            - CI Tests: ${{ needs.test.result }}
+            - Integration Tests: ${{ needs.integration-tests.result }}
+            - Health Check: PASSED
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  rollback:
+    name: Rollback
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: ${{ failure() }}
+    environment:
+      name: production
+    steps:
+      - name: Rollback production deployment
+        run: |
+          Write-Host "Initiating rollback for ${{ github.ref_name }}"
+          Write-Host "Restoring previous deployment artifacts..."
+          # Replace with actual rollback logic
+          # e.g. restore previous version from artifact archive
+          Write-Host "Running health check after rollback..."
+          try {
+            $response = Invoke-WebRequest -Uri "$env:PRODUCTION_URL/health" -TimeoutSec 10 -UseBasicParsing
+            if ($response.StatusCode -eq 200) {
+              Write-Host "Rollback complete — health check passed"
+            }
+          } catch {
+            Write-Host "WARN: rollback health check failed — manual intervention required"
+            exit 1
+          }

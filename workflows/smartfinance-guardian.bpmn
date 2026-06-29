@@ -1,0 +1,1177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_SmartFinanceGuardian" targetNamespace="http://smartbank.ai/bpmn" exporter="SmartBank Maestro Designer" exporterVersion="1.0">
+  <bpmn:process id="SmartFinanceGuardian" name="SmartFinance AI - Predictive Banking Problem Resolution Workflow" isExecutable="true" processType="Public">
+    <bpmn:extensions>
+      <bpmn:property id="namespace" value="http://smartbank.ai/guardian" />
+      <bpmn:property id="version" value="1.0.0" />
+      <bpmn:property id="description" value="Predictive banking problem resolution workflow that detects customer financial problems proactively using AI agents, RPA robots, and human-in-the-loop approvals." />
+      <bpmn:property id="autoResolutionRate" value="87" />
+      <bpmn:property id="avgResolutionTime" value="38s" />
+    </bpmn:extensions>
+
+    <!-- Correlation Key -->
+    <bpmn:correlationKey id="CorrelationKey_GuardianCase" name="GuardianCaseId">
+      <bpmn:correlationPropertyRef>CorrelationProperty_GuardianCase</bpmn:correlationPropertyRef>
+    </bpmn:correlationKey>
+
+    <bpmn:correlationProperty id="CorrelationProperty_GuardianCase" name="GuardianCaseId" type="xsd:string" />
+
+    <!-- Process Variables -->
+    <bpmn:property id="caseId" name="caseId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="customerId" name="customerId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="customerProfile" name="customerProfile" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="accountBalance" name="accountBalance" itemSubjectRef="ItemDef_Double" />
+    <bpmn:property id="transactionHistory" name="transactionHistory" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="paymentPatterns" name="paymentPatterns" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="riskScore" name="riskScore" itemSubjectRef="ItemDef_Double" />
+    <bpmn:property id="problemDetected" name="problemDetected" itemSubjectRef="ItemDef_Boolean" />
+    <bpmn:property id="problemType" name="problemType" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="problemSeverity" name="problemSeverity" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="aiAnalysisResult" name="aiAnalysisResult" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="agentResult" name="agentResult" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="requiresHumanApproval" name="requiresHumanApproval" itemSubjectRef="ItemDef_Boolean" />
+    <bpmn:property id="humanDecision" name="humanDecision" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="resolutionAction" name="resolutionAction" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="communicationMessage" name="communicationMessage" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="executionStatus" name="executionStatus" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="errorCode" name="errorCode" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="retryCount" name="retryCount" itemSubjectRef="ItemDef_Int" />
+    <bpmn:property id="slaDeadline" name="slaDeadline" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="escalationLevel" name="escalationLevel" itemSubjectRef="ItemDef_Int" />
+    <bpmn:property id="fraudRiskScore" name="fraudRiskScore" itemSubjectRef="ItemDef_Double" />
+    <bpmn:property id="upcomingBills" name="upcomingBills" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="failedTransactions" name="failedTransactions" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="financialHealthScore" name="financialHealthScore" itemSubjectRef="ItemDef_Double" />
+
+    <bpmn:itemDefinition id="ItemDef_String" structureRef="xsd:string" />
+    <bpmn:itemDefinition id="ItemDef_Double" structureRef="xsd:double" />
+    <bpmn:itemDefinition id="ItemDef_Int" structureRef="xsd:int" />
+    <bpmn:itemDefinition id="ItemDef_Boolean" structureRef="xsd:boolean" />
+
+    <!-- ================================================================== -->
+    <!-- START EVENT: Customer Financial Activity Detected                   -->
+    <!-- ================================================================== -->
+    <bpmn:startEvent id="StartEvent_CustomerActivity" name="Customer Financial Activity Detected">
+      <bpmn:correlationKeyRef>CorrelationKey_GuardianCase</bpmn:correlationKeyRef>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_CustomerActivity" />
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.FinancialActivity.v1" />
+        <bpmn:property id="sources" value="Mobile Banking, Internet Banking, ATM, Card Payments, Notifications, Support" />
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+
+    <!-- ================================================================== -->
+    <!-- STEP 1: RPA Data Collection Robot                                   -->
+    <!-- ================================================================== -->
+    <bpmn:serviceTask id="ServiceTask_RPADataCollection" name="RPA Data Collection Robot" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/data/collect" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="timeout" value="30000" />
+        <bpmn:property id="performer" value="UiPath RPA Robot - Data Collector" />
+        <bpmn:property id="systems" value="Core Banking System API, CRM API, Transaction Database" />
+        <bpmn:property id="inputs" value="customerId" />
+        <bpmn:property id="outputs" value="customerProfile, accountBalance, transactionHistory, paymentPatterns, riskScore" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_DataCollection" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_Collect">
+        <bpmn:targetRef>DataInput_CollectRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_CollectRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_Collect">
+        <bpmn:sourceRef>DataOutput_CollectResponse</bpmn:sourceRef>
+        <bpmn:targetRef>customerProfile</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_CollectResponse.customerProfile</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">customerProfile</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_DataCollection" attachedToRef="ServiceTask_RPADataCollection">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_DataCollection" errorRef="Error_DataCollection" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_DataCollection" attachedToRef="ServiceTask_RPADataCollection">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_DataCollection">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT30S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- ================================================================== -->
+    <!-- STEP 2: AI Financial Monitoring Agent                               -->
+    <!-- ================================================================== -->
+    <bpmn:serviceTask id="ServiceTask_AIFinancialMonitor" name="AI Financial Monitoring Agent" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/guardian/monitor" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="slaTimeout" value="PT60S" />
+        <bpmn:property id="timeout" value="60000" />
+        <bpmn:property id="performer" value="SmartFinance AI Guardian Agent" />
+        <bpmn:property id="technology" value="UiPath Agent Builder, LLM Agent, LangChain" />
+        <bpmn:property id="inputs" value="customerProfile, accountBalance, transactionHistory, paymentPatterns, riskScore" />
+        <bpmn:property id="outputs" value="aiAnalysisResult, problemDetected, problemType, problemSeverity" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_GuardianMonitor" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_Monitor">
+        <bpmn:targetRef>DataInput_MonitorRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerProfile, accountBalance, transactionHistory, paymentPatterns, riskScore}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_MonitorRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_Monitor">
+        <bpmn:sourceRef>DataOutput_MonitorResponse</bpmn:sourceRef>
+        <bpmn:targetRef>aiAnalysisResult</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_MonitorResponse</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">aiAnalysisResult</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_Monitor" attachedToRef="ServiceTask_AIFinancialMonitor">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_Monitor" errorRef="Error_Monitor" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_Monitor" attachedToRef="ServiceTask_AIFinancialMonitor">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_Monitor">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT60S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- ================================================================== -->
+    <!-- STEP 3: Problem Detection Gateway                                   -->
+    <!-- ================================================================== -->
+    <bpmn:exclusiveGateway id="Gateway_ProblemDetection" name="Financial Issue Detected?" gatewayDirection="Diverging" />
+
+    <!-- Path A: No Problem Detected -->
+    <bpmn:sequenceFlow id="Flow_NoProblem" name="No Problem" sourceRef="Gateway_ProblemDetection" targetRef="ServiceTask_AnalyticsStore">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">problemDetected = False</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_AnalyticsStore" name="Store Analytics &amp; Continue Monitoring" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/analytics/store" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="2" />
+        <bpmn:property id="timeout" value="10000" />
+        <bpmn:property id="performer" value="Analytics Service" />
+        <bpmn:property id="inputs" value="aiAnalysisResult, customerId" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_AnalyticsStore" />
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="Flow_Analytics_To_EndMonitor" name="" sourceRef="ServiceTask_AnalyticsStore" targetRef="EndEvent_ContinueMonitoring" />
+
+    <bpmn:endEvent id="EndEvent_ContinueMonitoring" name="Monitoring Continued">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.Guardian.MonitoringContinued" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- Path B: Problem Detected -->
+    <bpmn:sequenceFlow id="Flow_ProblemDetected" name="Problem Detected" sourceRef="Gateway_ProblemDetection" targetRef="Gateway_RouteByProblemType">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">problemDetected = True</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <!-- ================================================================== -->
+    <!-- STEP 4: Route by Problem Type Gateway                               -->
+    <!-- ================================================================== -->
+    <bpmn:exclusiveGateway id="Gateway_RouteByProblemType" name="Route By Problem Type" gatewayDirection="Diverging" />
+
+    <!-- ================================================================== -->
+    <!-- AGENT 1: Fraud Prevention Agent                                     -->
+    <!-- ================================================================== -->
+    <bpmn:sequenceFlow id="Flow_Fraud" name="Fraud Risk" sourceRef="Gateway_RouteByProblemType" targetRef="ServiceTask_FraudPreventionAgent">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">problemType = "FRAUD"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_FraudPreventionAgent" name="Fraud Prevention Agent" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/guardian/fraud" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="timeout" value="30000" />
+        <bpmn:property id="performer" value="SmartFinance AI - Fraud Prevention Agent" />
+        <bpmn:property id="inputs" value="customerProfile, transactionHistory, riskScore" />
+        <bpmn:property id="outputs" value="fraudRiskScore, agentResult" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_FraudPrevention" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_Fraud">
+        <bpmn:targetRef>DataInput_FraudRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerProfile, transactionHistory, riskScore}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_FraudRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_Fraud">
+        <bpmn:sourceRef>DataOutput_FraudResponse</bpmn:sourceRef>
+        <bpmn:targetRef>agentResult</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_FraudResponse</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">agentResult</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_Fraud" attachedToRef="ServiceTask_FraudPreventionAgent">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_Fraud" errorRef="Error_FraudAgent" />
+    </bpmn:boundaryEvent>
+
+    <!-- Fraud: Low Risk Gateway -->
+    <bpmn:exclusiveGateway id="Gateway_FraudRiskDecision" name="Fraud Risk Level?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_FraudAgent_To_Gateway" name="" sourceRef="ServiceTask_FraudPreventionAgent" targetRef="Gateway_FraudRiskDecision" />
+
+    <bpmn:sequenceFlow id="Flow_FraudLowRisk" name="Low Risk - Approve" sourceRef="Gateway_FraudRiskDecision" targetRef="Gateway_RiskEvaluation">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">fraudRiskScore &lt; 50.0</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_FraudHighRisk" name="High Risk - Block" sourceRef="Gateway_FraudRiskDecision" targetRef="ServiceTask_FraudAction">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">fraudRiskScore &gt;= 50.0</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_FraudAction" name="Temp Block &amp; Alert Customer" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/fraud/block" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="timeout" value="15000" />
+        <bpmn:property id="performer" value="Fraud Prevention Service" />
+        <bpmn:property id="inputs" value="customerId, transactionHistory, fraudRiskScore" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_FraudAction" />
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="Flow_FraudAction_To_Gateway" name="" sourceRef="ServiceTask_FraudAction" targetRef="Gateway_RiskEvaluation" />
+
+    <!-- ================================================================== -->
+    <!-- AGENT 2: Smart Bill Protection Agent                                -->
+    <!-- ================================================================== -->
+    <bpmn:sequenceFlow id="Flow_Bill" name="Bill Risk" sourceRef="Gateway_RouteByProblemType" targetRef="ServiceTask_BillProtectionAgent">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">problemType = "BILL"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_BillProtectionAgent" name="Smart Bill Protection Agent" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/guardian/bill" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="timeout" value="30000" />
+        <bpmn:property id="performer" value="SmartFinance AI - Bill Protection Agent" />
+        <bpmn:property id="inputs" value="customerProfile, accountBalance, transactionHistory, paymentPatterns" />
+        <bpmn:property id="outputs" value="upcomingBills, agentResult" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_BillProtection" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_Bill">
+        <bpmn:targetRef>DataInput_BillRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerProfile, accountBalance, transactionHistory, paymentPatterns}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_BillRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_Bill">
+        <bpmn:sourceRef>DataOutput_BillResponse</bpmn:sourceRef>
+        <bpmn:targetRef>agentResult</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_BillResponse</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">agentResult</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_Bill" attachedToRef="ServiceTask_BillProtectionAgent">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_Bill" errorRef="Error_BillAgent" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:sequenceFlow id="Flow_BillAgent_To_Risk" name="" sourceRef="ServiceTask_BillProtectionAgent" targetRef="Gateway_RiskEvaluation" />
+
+    <!-- ================================================================== -->
+    <!-- AGENT 3: Failed Transaction Recovery Agent                          -->
+    <!-- ================================================================== -->
+    <bpmn:sequenceFlow id="Flow_Recovery" name="Failed Transaction" sourceRef="Gateway_RouteByProblemType" targetRef="ServiceTask_TransactionRecoveryAgent">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">problemType = "RECOVERY"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_TransactionRecoveryAgent" name="Failed Transaction Recovery Agent" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/guardian/recovery" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="slaTimeout" value="PT45S" />
+        <bpmn:property id="timeout" value="45000" />
+        <bpmn:property id="performer" value="SmartFinance AI - Transaction Recovery Agent" />
+        <bpmn:property id="inputs" value="customerProfile, transactionHistory" />
+        <bpmn:property id="outputs" value="failedTransactions, agentResult" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_TransactionRecovery" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_Recovery">
+        <bpmn:targetRef>DataInput_RecoveryRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerProfile, transactionHistory}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_RecoveryRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_Recovery">
+        <bpmn:sourceRef>DataOutput_RecoveryResponse</bpmn:sourceRef>
+        <bpmn:targetRef>agentResult</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_RecoveryResponse</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">agentResult</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_Recovery" attachedToRef="ServiceTask_TransactionRecoveryAgent">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_Recovery" errorRef="Error_RecoveryAgent" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:sequenceFlow id="Flow_RecoveryAgent_To_Risk" name="" sourceRef="ServiceTask_TransactionRecoveryAgent" targetRef="Gateway_RiskEvaluation" />
+
+    <!-- ================================================================== -->
+    <!-- AGENT 4: Financial Health Coach Agent                               -->
+    <!-- ================================================================== -->
+    <bpmn:sequenceFlow id="Flow_Coach" name="Financial Health" sourceRef="Gateway_RouteByProblemType" targetRef="ServiceTask_FinancialCoachAgent">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">problemType = "COACH"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_FinancialCoachAgent" name="Financial Health Coach Agent" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/guardian/coach" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="timeout" value="30000" />
+        <bpmn:property id="performer" value="SmartFinance AI - Financial Coach Agent" />
+        <bpmn:property id="inputs" value="customerProfile, accountBalance, transactionHistory, paymentPatterns" />
+        <bpmn:property id="outputs" value="financialHealthScore, agentResult" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_FinancialCoach" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_Coach">
+        <bpmn:targetRef>DataInput_CoachRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerProfile, accountBalance, transactionHistory, paymentPatterns}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_CoachRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_Coach">
+        <bpmn:sourceRef>DataOutput_CoachResponse</bpmn:sourceRef>
+        <bpmn:targetRef>agentResult</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_CoachResponse</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">agentResult</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_Coach" attachedToRef="ServiceTask_FinancialCoachAgent">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_Coach" errorRef="Error_CoachAgent" />
+    </bpmn:boundaryEvent>
+
+    <bpmn:sequenceFlow id="Flow_CoachAgent_To_Risk" name="" sourceRef="ServiceTask_FinancialCoachAgent" targetRef="Gateway_RiskEvaluation" />
+
+    <!-- Default: Unknown Problem Type -->
+    <bpmn:sequenceFlow id="Flow_Default_ProblemType" name="Default - Escalate" sourceRef="Gateway_RouteByProblemType" targetRef="UserTask_HumanOfficer">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">True</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <!-- ================================================================== -->
+    <!-- STEP 5: Risk Decision Gateway                                       -->
+    <!-- ================================================================== -->
+    <bpmn:exclusiveGateway id="Gateway_RiskEvaluation" name="Requires Human Approval?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_AutoResolve" name="Auto-Resolve" sourceRef="Gateway_RiskEvaluation" targetRef="Gateway_MergeRPA">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">requiresHumanApproval = False</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_NeedsApproval" name="Human Approval Required" sourceRef="Gateway_RiskEvaluation" targetRef="UserTask_HumanOfficer">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">requiresHumanApproval = True</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <!-- ================================================================== -->
+    <!-- Human-in-the-Loop Review                                           -->
+    <!-- ================================================================== -->
+    <bpmn:userTask id="UserTask_HumanOfficer" name="Banking Officer Review" implementation="UiPath.Persona.Officer">
+      <bpmn:extensionElements>
+        <bpmn:property id="taskQueue" value="SmartFinance.HumanApproval" />
+        <bpmn:property id="priority" value="High" />
+        <bpmn:property id="slaTimeout" value="PT2H" />
+        <bpmn:property id="escalationAfter" value="PT30M" />
+        <bpmn:property id="escalationLevel" value="2" />
+        <bpmn:property id="formType" value="SmartFinance.ApprovalForm.v1" />
+        <bpmn:property id="performer" value="Banking Officer / Manager" />
+        <bpmn:property id="inputs" value="aiAnalysisResult, agentResult, customerProfile, problemType" />
+        <bpmn:property id="outputs" value="humanDecision" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_HumanApproval" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_Human">
+        <bpmn:targetRef>DataInput_HumanRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{aiAnalysisResult, agentResult, customerProfile, problemType}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_HumanRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_Human">
+        <bpmn:sourceRef>DataOutput_HumanResponse</bpmn:sourceRef>
+        <bpmn:targetRef>humanDecision</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_HumanResponse</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">humanDecision</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:userTask>
+
+    <bpmn:boundaryEvent id="BoundaryTimer_Human" attachedToRef="UserTask_HumanOfficer">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_Human">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT2H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <bpmn:exclusiveGateway id="Gateway_HumanDecision" name="Human Decision?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_Human_To_Decision" name="" sourceRef="UserTask_HumanOfficer" targetRef="Gateway_HumanDecision" />
+
+    <bpmn:sequenceFlow id="Flow_HumanApproved" name="Approved" sourceRef="Gateway_HumanDecision" targetRef="Gateway_MergeRPA">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">humanDecision = "Approved" OrElse humanDecision = "Approve"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_HumanRejected" name="Rejected" sourceRef="Gateway_HumanDecision" targetRef="EndEvent_ResolutionFailed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">humanDecision = "Rejected" OrElse humanDecision = "Reject"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_HumanMoreInfo" name="Request More Info" sourceRef="Gateway_HumanDecision" targetRef="ServiceTask_AIFinancialMonitor">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">humanDecision = "Request More Info" OrElse humanDecision = "MoreInfo"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <!-- ================================================================== -->
+    <!-- Merge Gateway before RPA Execution                                 -->
+    <!-- ================================================================== -->
+    <bpmn:exclusiveGateway id="Gateway_MergeRPA" name="Merge" gatewayDirection="Converging" />
+
+    <!-- ================================================================== -->
+    <!-- STEP 6: RPA Execution Layer                                        -->
+    <!-- ================================================================== -->
+
+    <!-- Robot 1: Transaction Processing Bot -->
+    <bpmn:serviceTask id="ServiceTask_TransactionBot" name="Transaction Processing Bot" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/rpa/transaction" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="slaTimeout" value="PT1M" />
+        <bpmn:property id="timeout" value="60000" />
+        <bpmn:property id="performer" value="UiPath RPA Robot - Transaction Processor" />
+        <bpmn:property id="inputs" value="agentResult, humanDecision, caseId" />
+        <bpmn:property id="outputs" value="resolutionAction, executionStatus" />
+        <bpmn:property id="tasks" value="Update banking records, Execute approved actions, Process service requests" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_TransactionBot" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_TxnBot">
+        <bpmn:targetRef>DataInput_TxnBotRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{agentResult, humanDecision, caseId}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_TxnBotRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_TxnBot">
+        <bpmn:sourceRef>DataOutput_TxnBotResponse</bpmn:sourceRef>
+        <bpmn:targetRef>resolutionAction</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_TxnBotResponse.resolutionAction</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">resolutionAction</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_TxnBot" attachedToRef="ServiceTask_TransactionBot">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_TxnBot" errorRef="Error_TxnBot" />
+    </bpmn:boundaryEvent>
+
+    <!-- Robot 2: Communication Bot -->
+    <bpmn:serviceTask id="ServiceTask_CommunicationBot" name="Communication Bot" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/rpa/communicate" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="timeout" value="30000" />
+        <bpmn:property id="performer" value="UiPath RPA Robot - Communication Dispatcher" />
+        <bpmn:property id="inputs" value="customerId, communicationMessage, problemType" />
+        <bpmn:property id="channels" value="SMS, Email, WhatsApp, Mobile App" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_CommunicationBot" />
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_CommBot" attachedToRef="ServiceTask_CommunicationBot">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_CommBot" errorRef="Error_CommBot" />
+    </bpmn:boundaryEvent>
+
+    <!-- Robot 3: Reporting Bot -->
+    <bpmn:serviceTask id="ServiceTask_ReportingBot" name="Reporting &amp; Audit Bot" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/rpa/report" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="2" />
+        <bpmn:property id="timeout" value="20000" />
+        <bpmn:property id="performer" value="UiPath RPA Robot - Reporting" />
+        <bpmn:property id="inputs" value="caseId, resolutionAction, executionStatus" />
+        <bpmn:property id="outputs" value="auditReport" />
+        <bpmn:property id="tasks" value="Create audit reports, Store workflow history, Generate compliance logs" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_ReportingBot" />
+    </bpmn:serviceTask>
+
+    <!-- ================================================================== -->
+    <!-- STEP 7: API Integration Layer                                      -->
+    <!-- ================================================================== -->
+    <bpmn:serviceTask id="ServiceTask_APIIntegration" name="API Integration Layer" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/integrations/sync" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="timeout" value="30000" />
+        <bpmn:property id="performer" value="API Integration Service" />
+        <bpmn:property id="apis" value="Core Banking, Payment Gateway, CRM, Fraud Detection, Notification" />
+        <bpmn:property id="inputs" value="resolutionAction, caseId, customerId" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_APIIntegration" />
+    </bpmn:serviceTask>
+
+    <bpmn:boundaryEvent id="BoundaryError_API" attachedToRef="ServiceTask_APIIntegration">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_API" errorRef="Error_API" />
+    </bpmn:boundaryEvent>
+
+    <!-- ================================================================== -->
+    <!-- STEP 8: AI Communication Agent                                     -->
+    <!-- ================================================================== -->
+    <bpmn:serviceTask id="ServiceTask_AICommunication" name="AI Communication Agent" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/guardian/communicate" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="slaTimeout" value="PT15S" />
+        <bpmn:property id="timeout" value="15000" />
+        <bpmn:property id="performer" value="SmartFinance AI - Communication Agent" />
+        <bpmn:property id="inputs" value="problemType, resolutionAction, customerProfile" />
+        <bpmn:property id="outputs" value="communicationMessage" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_AICommunication" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_Comm">
+        <bpmn:targetRef>DataInput_CommRequest</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{problemType, resolutionAction, customerProfile}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_CommRequest</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_Comm">
+        <bpmn:sourceRef>DataOutput_CommResponse</bpmn:sourceRef>
+        <bpmn:targetRef>communicationMessage</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_CommResponse</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">communicationMessage</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <!-- ================================================================== -->
+    <!-- END EVENT                                                          -->
+    <!-- ================================================================== -->
+    <bpmn:endEvent id="EndEvent_ResolutionSuccess" name="Problem Successfully Resolved">
+      <bpmn:correlationKeyRef>CorrelationKey_GuardianCase</bpmn:correlationKeyRef>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_Resolved" />
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.Guardian.Resolved" />
+        <bpmn:property id="results" value="Customer issue solved, Banking operation completed, AI decision recorded, Audit trail generated, Customer notified" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <bpmn:endEvent id="EndEvent_ResolutionFailed" name="Resolution Failed / Rejected">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.Guardian.Failed" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- ================================================================== -->
+    <!-- SEQUENCE FLOWS - Main Flow                                        -->
+    <!-- ================================================================== -->
+    <bpmn:sequenceFlow id="Flow_Start_To_DataCollection" name="" sourceRef="StartEvent_CustomerActivity" targetRef="ServiceTask_RPADataCollection" />
+    <bpmn:sequenceFlow id="Flow_DataCollection_To_Monitor" name="" sourceRef="ServiceTask_RPADataCollection" targetRef="ServiceTask_AIFinancialMonitor" />
+    <bpmn:sequenceFlow id="Flow_Monitor_To_Gateway" name="" sourceRef="ServiceTask_AIFinancialMonitor" targetRef="Gateway_ProblemDetection" />
+
+    <!-- RPA Sequence Flows (converging merge to parallel tasks) -->
+    <bpmn:sequenceFlow id="Flow_Merge_To_TransactionBot" name="" sourceRef="Gateway_MergeRPA" targetRef="ServiceTask_TransactionBot" />
+    <bpmn:sequenceFlow id="Flow_TxnBot_To_CommBot" name="" sourceRef="ServiceTask_TransactionBot" targetRef="ServiceTask_CommunicationBot" />
+    <bpmn:sequenceFlow id="Flow_CommBot_To_ReportBot" name="" sourceRef="ServiceTask_CommunicationBot" targetRef="ServiceTask_ReportingBot" />
+    <bpmn:sequenceFlow id="Flow_ReportBot_To_API" name="" sourceRef="ServiceTask_ReportingBot" targetRef="ServiceTask_APIIntegration" />
+    <bpmn:sequenceFlow id="Flow_API_To_AIComm" name="" sourceRef="ServiceTask_APIIntegration" targetRef="ServiceTask_AICommunication" />
+    <bpmn:sequenceFlow id="Flow_AIComm_To_End" name="" sourceRef="ServiceTask_AICommunication" targetRef="EndEvent_ResolutionSuccess" />
+
+    <!-- Error flows -->
+    <bpmn:sequenceFlow id="Flow_Error_DataCollection" name="Data Collection Error" sourceRef="BoundaryError_DataCollection" targetRef="EndEvent_ResolutionFailed" />
+    <bpmn:sequenceFlow id="Flow_Timer_DataCollection" name="Data Collection SLA" sourceRef="BoundaryTimer_DataCollection" targetRef="EndEvent_ResolutionFailed" />
+    <bpmn:sequenceFlow id="Flow_Error_Monitor" name="Monitor Error" sourceRef="BoundaryError_Monitor" targetRef="EndEvent_ResolutionFailed" />
+    <bpmn:sequenceFlow id="Flow_Timer_Monitor" name="Monitor SLA" sourceRef="BoundaryTimer_Monitor" targetRef="EndEvent_ResolutionFailed" />
+    <bpmn:sequenceFlow id="Flow_Error_Fraud" name="Fraud Agent Error" sourceRef="BoundaryError_Fraud" targetRef="EndEvent_ResolutionFailed" />
+    <bpmn:sequenceFlow id="Flow_Error_Bill" name="Bill Agent Error" sourceRef="BoundaryError_Bill" targetRef="EndEvent_ResolutionFailed" />
+    <bpmn:sequenceFlow id="Flow_Error_Recovery" name="Recovery Agent Error" sourceRef="BoundaryError_Recovery" targetRef="EndEvent_ResolutionFailed" />
+    <bpmn:sequenceFlow id="Flow_Error_Coach" name="Coach Agent Error" sourceRef="BoundaryError_Coach" targetRef="EndEvent_ResolutionFailed" />
+    <bpmn:sequenceFlow id="Flow_Error_TxnBot" name="Transaction Bot Error" sourceRef="BoundaryError_TxnBot" targetRef="EndEvent_ResolutionFailed" />
+    <bpmn:sequenceFlow id="Flow_Error_CommBot" name="Communication Bot Error" sourceRef="BoundaryError_CommBot" targetRef="EndEvent_ResolutionFailed" />
+    <bpmn:sequenceFlow id="Flow_Error_API" name="API Integration Error" sourceRef="BoundaryError_API" targetRef="EndEvent_ResolutionFailed" />
+
+    <!-- Human timer escalation -->
+    <bpmn:sequenceFlow id="Flow_Timer_Human" name="Human SLA Breach" sourceRef="BoundaryTimer_Human" targetRef="EndEvent_ResolutionFailed" />
+
+    <!-- Error definitions -->
+    <bpmn:error id="Error_DataCollection" name="DataCollectionError" errorCode="ERR_DATA_COLLECTION" />
+    <bpmn:error id="Error_Monitor" name="MonitorError" errorCode="ERR_MONITOR" />
+    <bpmn:error id="Error_FraudAgent" name="FraudAgentError" errorCode="ERR_FRAUD_AGENT" />
+    <bpmn:error id="Error_BillAgent" name="BillAgentError" errorCode="ERR_BILL_AGENT" />
+    <bpmn:error id="Error_RecoveryAgent" name="RecoveryAgentError" errorCode="ERR_RECOVERY_AGENT" />
+    <bpmn:error id="Error_CoachAgent" name="CoachAgentError" errorCode="ERR_COACH_AGENT" />
+    <bpmn:error id="Error_TxnBot" name="TransactionBotError" errorCode="ERR_TXN_BOT" />
+    <bpmn:error id="Error_CommBot" name="CommunicationBotError" errorCode="ERR_COMM_BOT" />
+    <bpmn:error id="Error_API" name="APIIntegrationError" errorCode="ERR_API" />
+  </bpmn:process>
+
+  <!-- ==================================================================== -->
+  <!-- Interfaces and Operations                                           -->
+  <!-- ==================================================================== -->
+  <bpmn:interface id="Interface_Guardian" name="SmartFinance Guardian API Interface">
+    <bpmn:operation id="Operation_DataCollection" name="DataCollection" implementationRef="SmartFinance.API.DataCollection">
+      <bpmn:inMessageRef>Message_DataCollectionRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_DataCollectionResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_GuardianMonitor" name="GuardianMonitor" implementationRef="SmartFinance.API.GuardianMonitor">
+      <bpmn:inMessageRef>Message_MonitorRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_MonitorResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_AnalyticsStore" name="AnalyticsStore" implementationRef="SmartFinance.API.AnalyticsStore">
+      <bpmn:inMessageRef>Message_AnalyticsRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_AnalyticsResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_FraudPrevention" name="FraudPrevention" implementationRef="SmartFinance.API.FraudPrevention">
+      <bpmn:inMessageRef>Message_FraudRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_FraudResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_FraudAction" name="FraudAction" implementationRef="SmartFinance.API.FraudAction">
+      <bpmn:inMessageRef>Message_FraudActionRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_FraudActionResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_BillProtection" name="BillProtection" implementationRef="SmartFinance.API.BillProtection">
+      <bpmn:inMessageRef>Message_BillRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_BillResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_TransactionRecovery" name="TransactionRecovery" implementationRef="SmartFinance.API.TransactionRecovery">
+      <bpmn:inMessageRef>Message_RecoveryRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_RecoveryResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_FinancialCoach" name="FinancialCoach" implementationRef="SmartFinance.API.FinancialCoach">
+      <bpmn:inMessageRef>Message_CoachRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_CoachResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_HumanApproval" name="HumanApproval" implementationRef="SmartFinance.UI.ApprovalForm">
+      <bpmn:inMessageRef>Message_HumanRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_HumanResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_TransactionBot" name="TransactionBot" implementationRef="SmartFinance.RPA.TransactionProcessor">
+      <bpmn:inMessageRef>Message_TxnBotRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_TxnBotResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_CommunicationBot" name="CommunicationBot" implementationRef="SmartFinance.RPA.CommunicationDispatcher">
+      <bpmn:inMessageRef>Message_CommBotRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_CommBotResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_ReportingBot" name="ReportingBot" implementationRef="SmartFinance.RPA.Reporting">
+      <bpmn:inMessageRef>Message_ReportBotRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_ReportBotResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_APIIntegration" name="APIIntegration" implementationRef="SmartFinance.API.Integration">
+      <bpmn:inMessageRef>Message_APIRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_APIResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_AICommunication" name="AICommunication" implementationRef="SmartFinance.API.AICommunication">
+      <bpmn:inMessageRef>Message_CommRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_CommResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+  </bpmn:interface>
+
+  <!-- Messages -->
+  <bpmn:message id="Message_DataCollectionRequest" name="SmartFinance.DataCollectionRequest.v1" />
+  <bpmn:message id="Message_DataCollectionResponse" name="SmartFinance.DataCollectionResponse.v1" />
+  <bpmn:message id="Message_MonitorRequest" name="SmartFinance.MonitorRequest.v1" />
+  <bpmn:message id="Message_MonitorResponse" name="SmartFinance.MonitorResponse.v1" />
+  <bpmn:message id="Message_AnalyticsRequest" name="SmartFinance.AnalyticsRequest.v1" />
+  <bpmn:message id="Message_AnalyticsResponse" name="SmartFinance.AnalyticsResponse.v1" />
+  <bpmn:message id="Message_FraudRequest" name="SmartFinance.FraudRequest.v1" />
+  <bpmn:message id="Message_FraudResponse" name="SmartFinance.FraudResponse.v1" />
+  <bpmn:message id="Message_FraudActionRequest" name="SmartFinance.FraudActionRequest.v1" />
+  <bpmn:message id="Message_FraudActionResponse" name="SmartFinance.FraudActionResponse.v1" />
+  <bpmn:message id="Message_BillRequest" name="SmartFinance.BillRequest.v1" />
+  <bpmn:message id="Message_BillResponse" name="SmartFinance.BillResponse.v1" />
+  <bpmn:message id="Message_RecoveryRequest" name="SmartFinance.RecoveryRequest.v1" />
+  <bpmn:message id="Message_RecoveryResponse" name="SmartFinance.RecoveryResponse.v1" />
+  <bpmn:message id="Message_CoachRequest" name="SmartFinance.CoachRequest.v1" />
+  <bpmn:message id="Message_CoachResponse" name="SmartFinance.CoachResponse.v1" />
+  <bpmn:message id="Message_HumanRequest" name="SmartFinance.HumanRequest.v1" />
+  <bpmn:message id="Message_HumanResponse" name="SmartFinance.HumanResponse.v1" />
+  <bpmn:message id="Message_TxnBotRequest" name="SmartFinance.TxnBotRequest.v1" />
+  <bpmn:message id="Message_TxnBotResponse" name="SmartFinance.TxnBotResponse.v1" />
+  <bpmn:message id="Message_CommBotRequest" name="SmartFinance.CommBotRequest.v1" />
+  <bpmn:message id="Message_CommBotResponse" name="SmartFinance.CommBotResponse.v1" />
+  <bpmn:message id="Message_ReportBotRequest" name="SmartFinance.ReportBotRequest.v1" />
+  <bpmn:message id="Message_ReportBotResponse" name="SmartFinance.ReportBotResponse.v1" />
+  <bpmn:message id="Message_APIRequest" name="SmartFinance.APIRequest.v1" />
+  <bpmn:message id="Message_APIResponse" name="SmartFinance.APIResponse.v1" />
+  <bpmn:message id="Message_CommRequest" name="SmartFinance.CommRequest.v1" />
+  <bpmn:message id="Message_CommResponse" name="SmartFinance.CommResponse.v1" />
+
+  <!-- Data Inputs/Outputs -->
+  <bpmn:dataInput id="DataInput_CollectRequest" name="CollectRequest" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_CollectResponse" name="CollectResponse" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_MonitorRequest" name="MonitorRequest" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_MonitorResponse" name="MonitorResponse" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_FraudRequest" name="FraudRequest" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_FraudResponse" name="FraudResponse" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_BillRequest" name="BillRequest" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_BillResponse" name="BillResponse" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_RecoveryRequest" name="RecoveryRequest" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_RecoveryResponse" name="RecoveryResponse" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_CoachRequest" name="CoachRequest" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_CoachResponse" name="CoachResponse" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_HumanRequest" name="HumanRequest" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_HumanResponse" name="HumanResponse" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_TxnBotRequest" name="TxnBotRequest" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_TxnBotResponse" name="TxnBotResponse" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_CommRequest" name="CommRequest" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_CommResponse" name="CommResponse" itemSubjectRef="ItemDef_String" />
+
+  <!-- ==================================================================== -->
+  <!-- BPMN Diagram                                                        -->
+  <!-- ==================================================================== -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Guardian" name="SmartFinance Guardian Diagram">
+    <bpmndi:BPMNPlane id="BPMNPlane_Guardian" bpmnElement="SmartFinanceGuardian">
+
+      <!-- Start Event -->
+      <bpmndi:BPMNShape id="Shape_Start" bpmnElement="StartEvent_CustomerActivity">
+        <dc:Bounds x="50" y="270" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- Data Collection Robot -->
+      <bpmndi:BPMNShape id="Shape_DataCollection" bpmnElement="ServiceTask_RPADataCollection">
+        <dc:Bounds x="150" y="248" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- Financial Monitor Agent -->
+      <bpmndi:BPMNShape id="Shape_Monitor" bpmnElement="ServiceTask_AIFinancialMonitor">
+        <dc:Bounds x="340" y="248" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- Problem Detection Gateway -->
+      <bpmndi:BPMNShape id="Shape_ProblemGateway" bpmnElement="Gateway_ProblemDetection">
+        <dc:Bounds x="540" y="258" width="50" height="50" />
+      </bpmndi:BPMNShape>
+
+      <!-- Analytics Store (No Problem) -->
+      <bpmndi:BPMNShape id="Shape_AnalyticsStore" bpmnElement="ServiceTask_AnalyticsStore">
+        <dc:Bounds x="660" y="140" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- End: Monitoring Continued -->
+      <bpmndi:BPMNShape id="Shape_EndMonitor" bpmnElement="EndEvent_ContinueMonitoring">
+        <dc:Bounds x="850" y="162" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- Route by Problem Type Gateway -->
+      <bpmndi:BPMNShape id="Shape_RouteGateway" bpmnElement="Gateway_RouteByProblemType">
+        <dc:Bounds x="660" y="258" width="50" height="50" />
+      </bpmndi:BPMNShape>
+
+      <!-- Fraud Prevention Agent -->
+      <bpmndi:BPMNShape id="Shape_FraudAgent" bpmnElement="ServiceTask_FraudPreventionAgent">
+        <dc:Bounds x="790" y="80" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- Fraud Risk Gateway -->
+      <bpmndi:BPMNShape id="Shape_FraudGateway" bpmnElement="Gateway_FraudRiskDecision">
+        <dc:Bounds x="990" y="90" width="50" height="50" />
+      </bpmndi:BPMNShape>
+
+      <!-- Fraud Action (Block) -->
+      <bpmndi:BPMNShape id="Shape_FraudAction" bpmnElement="ServiceTask_FraudAction">
+        <dc:Bounds x="1100" y="170" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- Bill Protection Agent -->
+      <bpmndi:BPMNShape id="Shape_BillAgent" bpmnElement="ServiceTask_BillProtectionAgent">
+        <dc:Bounds x="790" y="190" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- Transaction Recovery Agent -->
+      <bpmndi:BPMNShape id="Shape_RecoveryAgent" bpmnElement="ServiceTask_TransactionRecoveryAgent">
+        <dc:Bounds x="790" y="300" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- Financial Coach Agent -->
+      <bpmndi:BPMNShape id="Shape_CoachAgent" bpmnElement="ServiceTask_FinancialCoachAgent">
+        <dc:Bounds x="790" y="410" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- Risk Evaluation Gateway -->
+      <bpmndi:BPMNShape id="Shape_RiskGateway" bpmnElement="Gateway_RiskEvaluation">
+        <dc:Bounds x="1000" y="310" width="50" height="50" />
+      </bpmndi:BPMNShape>
+
+      <!-- Human Officer Review -->
+      <bpmndi:BPMNShape id="Shape_HumanTask" bpmnElement="UserTask_HumanOfficer">
+        <dc:Bounds x="1130" y="140" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- Human Decision Gateway -->
+      <bpmndi:BPMNShape id="Shape_HumanDecision" bpmnElement="Gateway_HumanDecision">
+        <dc:Bounds x="1320" y="150" width="50" height="50" />
+      </bpmndi:BPMNShape>
+
+      <!-- Merge Gateway (before RPA) -->
+      <bpmndi:BPMNShape id="Shape_MergeRPA" bpmnElement="Gateway_MergeRPA">
+        <dc:Bounds x="1320" y="310" width="50" height="50" />
+      </bpmndi:BPMNShape>
+
+      <!-- Transaction Processing Bot -->
+      <bpmndi:BPMNShape id="Shape_TxnBot" bpmnElement="ServiceTask_TransactionBot">
+        <dc:Bounds x="1440" y="288" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- Communication Bot -->
+      <bpmndi:BPMNShape id="Shape_CommBot" bpmnElement="ServiceTask_CommunicationBot">
+        <dc:Bounds x="1630" y="288" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- Reporting Bot -->
+      <bpmndi:BPMNShape id="Shape_ReportBot" bpmnElement="ServiceTask_ReportingBot">
+        <dc:Bounds x="1820" y="288" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- API Integration Layer -->
+      <bpmndi:BPMNShape id="Shape_API" bpmnElement="ServiceTask_APIIntegration">
+        <dc:Bounds x="2010" y="288" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- AI Communication Agent -->
+      <bpmndi:BPMNShape id="Shape_AIComm" bpmnElement="ServiceTask_AICommunication">
+        <dc:Bounds x="2200" y="288" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- End Event: Success -->
+      <bpmndi:BPMNShape id="Shape_EndSuccess" bpmnElement="EndEvent_ResolutionSuccess">
+        <dc:Bounds x="2400" y="310" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- End Event: Failed -->
+      <bpmndi:BPMNShape id="Shape_EndFailed" bpmnElement="EndEvent_ResolutionFailed">
+        <dc:Bounds x="2400" y="450" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- Boundary Error/Timer Shapes -->
+      <bpmndi:BPMNShape id="Shape_Error_DataCollection" bpmnElement="BoundaryError_DataCollection">
+        <dc:Bounds x="170" y="328" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Timer_DataCollection" bpmnElement="BoundaryTimer_DataCollection">
+        <dc:Bounds x="214" y="328" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Error_Monitor" bpmnElement="BoundaryError_Monitor">
+        <dc:Bounds x="360" y="328" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Timer_Monitor" bpmnElement="BoundaryTimer_Monitor">
+        <dc:Bounds x="404" y="328" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Error_Fraud" bpmnElement="BoundaryError_Fraud">
+        <dc:Bounds x="810" y="160" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Error_Bill" bpmnElement="BoundaryError_Bill">
+        <dc:Bounds x="810" y="270" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Error_Recovery" bpmnElement="BoundaryError_Recovery">
+        <dc:Bounds x="810" y="380" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Error_Coach" bpmnElement="BoundaryError_Coach">
+        <dc:Bounds x="810" y="490" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Error_TxnBot" bpmnElement="BoundaryError_TxnBot">
+        <dc:Bounds x="1460" y="368" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Error_CommBot" bpmnElement="BoundaryError_CommBot">
+        <dc:Bounds x="1650" y="368" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Error_API" bpmnElement="BoundaryError_API">
+        <dc:Bounds x="2030" y="368" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Timer_Human" bpmnElement="BoundaryTimer_Human">
+        <dc:Bounds x="1172" y="220" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- ========== EDGES ========== -->
+      <bpmndi:BPMNEdge id="Edge_Start_To_DataCollection" bpmnElement="Flow_Start_To_DataCollection">
+        <di:waypoint x="86" y="288" />
+        <di:waypoint x="150" y="288" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_DataCollection_To_Monitor" bpmnElement="Flow_DataCollection_To_Monitor">
+        <di:waypoint x="280" y="288" />
+        <di:waypoint x="340" y="288" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Monitor_To_Gateway" bpmnElement="Flow_Monitor_To_Gateway">
+        <di:waypoint x="470" y="288" />
+        <di:waypoint x="540" y="283" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_NoProblem" bpmnElement="Flow_NoProblem">
+        <di:waypoint x="565" y="258" />
+        <di:waypoint x="565" y="180" />
+        <di:waypoint x="660" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Analytics_To_End" bpmnElement="Flow_Analytics_To_EndMonitor">
+        <di:waypoint x="790" y="180" />
+        <di:waypoint x="850" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_ProblemDetected" bpmnElement="Flow_ProblemDetected">
+        <di:waypoint x="590" y="283" />
+        <di:waypoint x="660" y="283" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_Fraud" bpmnElement="Flow_Fraud">
+        <di:waypoint x="685" y="258" />
+        <di:waypoint x="685" y="120" />
+        <di:waypoint x="790" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_Bill" bpmnElement="Flow_Bill">
+        <di:waypoint x="685" y="268" />
+        <di:waypoint x="790" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_Recovery" bpmnElement="Flow_Recovery">
+        <di:waypoint x="685" y="278" />
+        <di:waypoint x="685" y="340" />
+        <di:waypoint x="790" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_To_Coach" bpmnElement="Flow_Coach">
+        <di:waypoint x="685" y="288" />
+        <di:waypoint x="685" y="450" />
+        <di:waypoint x="790" y="450" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Default_Problem" bpmnElement="Flow_Default_ProblemType">
+        <di:waypoint x="685" y="308" />
+        <di:waypoint x="685" y="520" />
+        <di:waypoint x="1195" y="520" />
+        <di:waypoint x="1195" y="220" />
+      </bpmndi:BPMNEdge>
+
+      <!-- Fraud Agent -> Fraud Gateway -->
+      <bpmndi:BPMNEdge id="Edge_FraudAgent_To_Gateway" bpmnElement="Flow_FraudAgent_To_Gateway">
+        <di:waypoint x="920" y="120" />
+        <di:waypoint x="990" y="115" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_FraudLowRisk" bpmnElement="Flow_FraudLowRisk">
+        <di:waypoint x="1015" y="140" />
+        <di:waypoint x="1015" y="310" />
+        <di:waypoint x="1000" y="310" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_FraudHighRisk" bpmnElement="Flow_FraudHighRisk">
+        <di:waypoint x="1040" y="115" />
+        <di:waypoint x="1100" y="210" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_FraudAction_To_Risk" bpmnElement="Flow_FraudAction_To_Gateway">
+        <di:waypoint x="1230" y="210" />
+        <di:waypoint x="1230" y="310" />
+        <di:waypoint x="1050" y="310" />
+      </bpmndi:BPMNEdge>
+
+      <!-- Bill/Recovery/Coach -> Risk Gateway -->
+      <bpmndi:BPMNEdge id="Edge_Bill_To_Risk" bpmnElement="Flow_BillAgent_To_Risk">
+        <di:waypoint x="920" y="230" />
+        <di:waypoint x="1000" y="310" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Recovery_To_Risk" bpmnElement="Flow_RecoveryAgent_To_Risk">
+        <di:waypoint x="920" y="340" />
+        <di:waypoint x="1000" y="335" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Coach_To_Risk" bpmnElement="Flow_CoachAgent_To_Risk">
+        <di:waypoint x="920" y="450" />
+        <di:waypoint x="1000" y="360" />
+      </bpmndi:BPMNEdge>
+
+      <!-- Risk Gateway -> Auto-Resolve -->
+      <bpmndi:BPMNEdge id="Edge_AutoResolve" bpmnElement="Flow_AutoResolve">
+        <di:waypoint x="1050" y="335" />
+        <di:waypoint x="1320" y="335" />
+      </bpmndi:BPMNEdge>
+
+      <!-- Risk Gateway -> Human -->
+      <bpmndi:BPMNEdge id="Edge_NeedsApproval" bpmnElement="Flow_NeedsApproval">
+        <di:waypoint x="1025" y="310" />
+        <di:waypoint x="1025" y="180" />
+        <di:waypoint x="1130" y="180" />
+      </bpmndi:BPMNEdge>
+
+      <!-- Human -> Decision Gateway -->
+      <bpmndi:BPMNEdge id="Edge_Human_To_Decision" bpmnElement="Flow_Human_To_Decision">
+        <di:waypoint x="1260" y="180" />
+        <di:waypoint x="1320" y="175" />
+      </bpmndi:BPMNEdge>
+
+      <!-- Human Decision -> Approved -> Merge -->
+      <bpmndi:BPMNEdge id="Edge_HumanApproved" bpmnElement="Flow_HumanApproved">
+        <di:waypoint x="1345" y="200" />
+        <di:waypoint x="1345" y="335" />
+      </bpmndi:BPMNEdge>
+
+      <!-- Human Decision -> Rejected -> End Failed -->
+      <bpmndi:BPMNEdge id="Edge_HumanRejected" bpmnElement="Flow_HumanRejected">
+        <di:waypoint x="1370" y="175" />
+        <di:waypoint x="1370" y="450" />
+        <di:waypoint x="2400" y="450" />
+      </bpmndi:BPMNEdge>
+
+      <!-- Human Decision -> More Info -> Monitor -->
+      <bpmndi:BPMNEdge id="Edge_HumanMoreInfo" bpmnElement="Flow_HumanMoreInfo">
+        <di:waypoint x="1320" y="150" />
+        <di:waypoint x="1320" y="50" />
+        <di:waypoint x="405" y="50" />
+        <di:waypoint x="405" y="248" />
+      </bpmndi:BPMNEdge>
+
+      <!-- Merge -> Transaction Bot -->
+      <bpmndi:BPMNEdge id="Edge_Merge_To_TxnBot" bpmnElement="Flow_Merge_To_TransactionBot">
+        <di:waypoint x="1370" y="335" />
+        <di:waypoint x="1440" y="328" />
+      </bpmndi:BPMNEdge>
+
+      <!-- Txn -> Comm -> Report -> API -> AI Comm -> End -->
+      <bpmndi:BPMNEdge id="Edge_Txn_To_Comm" bpmnElement="Flow_TxnBot_To_CommBot">
+        <di:waypoint x="1570" y="328" />
+        <di:waypoint x="1630" y="328" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Comm_To_Report" bpmnElement="Flow_CommBot_To_ReportBot">
+        <di:waypoint x="1760" y="328" />
+        <di:waypoint x="1820" y="328" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Report_To_API" bpmnElement="Flow_ReportBot_To_API">
+        <di:waypoint x="1950" y="328" />
+        <di:waypoint x="2010" y="328" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_API_To_AIComm" bpmnElement="Flow_API_To_AIComm">
+        <di:waypoint x="2140" y="328" />
+        <di:waypoint x="2200" y="328" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_AIComm_To_End" bpmnElement="Flow_AIComm_To_End">
+        <di:waypoint x="2330" y="328" />
+        <di:waypoint x="2400" y="328" />
+      </bpmndi:BPMNEdge>
+
+      <!-- Error flows to End Failed -->
+      <bpmndi:BPMNEdge id="Edge_Error_DataCollection" bpmnElement="Flow_Error_DataCollection">
+        <di:waypoint x="188" y="364" />
+        <di:waypoint x="188" y="560" />
+        <di:waypoint x="2418" y="560" />
+        <di:waypoint x="2418" y="486" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Timer_DataCollection" bpmnElement="Flow_Timer_DataCollection">
+        <di:waypoint x="232" y="364" />
+        <di:waypoint x="232" y="580" />
+        <di:waypoint x="2418" y="580" />
+        <di:waypoint x="2418" y="486" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Error_Monitor" bpmnElement="Flow_Error_Monitor">
+        <di:waypoint x="378" y="364" />
+        <di:waypoint x="378" y="540" />
+        <di:waypoint x="2418" y="540" />
+        <di:waypoint x="2418" y="486" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Timer_Monitor" bpmnElement="Flow_Timer_Monitor">
+        <di:waypoint x="422" y="364" />
+        <di:waypoint x="422" y="600" />
+        <di:waypoint x="2418" y="600" />
+        <di:waypoint x="2418" y="486" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Error_Fraud_End" bpmnElement="Flow_Error_Fraud">
+        <di:waypoint x="828" y="160" />
+        <di:waypoint x="828" y="530" />
+        <di:waypoint x="2418" y="530" />
+        <di:waypoint x="2418" y="486" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Error_Bill_End" bpmnElement="Flow_Error_Bill">
+        <di:waypoint x="828" y="270" />
+        <di:waypoint x="828" y="620" />
+        <di:waypoint x="2418" y="620" />
+        <di:waypoint x="2418" y="486" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Error_Recovery_End" bpmnElement="Flow_Error_Recovery">
+        <di:waypoint x="828" y="380" />
+        <di:waypoint x="828" y="640" />
+        <di:waypoint x="2418" y="640" />
+        <di:waypoint x="2418" y="486" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Error_Coach_End" bpmnElement="Flow_Error_Coach">
+        <di:waypoint x="828" y="490" />
+        <di:waypoint x="828" y="660" />
+        <di:waypoint x="2418" y="660" />
+        <di:waypoint x="2418" y="486" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Error_Txn_End" bpmnElement="Flow_Error_TxnBot">
+        <di:waypoint x="1478" y="368" />
+        <di:waypoint x="1478" y="500" />
+        <di:waypoint x="2418" y="500" />
+        <di:waypoint x="2418" y="486" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Error_Comm_End" bpmnElement="Flow_Error_CommBot">
+        <di:waypoint x="1668" y="368" />
+        <di:waypoint x="1668" y="520" />
+        <di:waypoint x="2418" y="520" />
+        <di:waypoint x="2418" y="486" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Error_API_End" bpmnElement="Flow_Error_API">
+        <di:waypoint x="2048" y="368" />
+        <di:waypoint x="2048" y="480" />
+        <di:waypoint x="2418" y="480" />
+        <di:waypoint x="2418" y="486" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Timer_Human_End" bpmnElement="Flow_Timer_Human">
+        <di:waypoint x="1190" y="256" />
+        <di:waypoint x="1190" y="490" />
+        <di:waypoint x="2418" y="490" />
+        <di:waypoint x="2418" y="486" />
+      </bpmndi:BPMNEdge>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,0 +1,251 @@
+{
+  "$schema": "https://schemas.uipath.com/du/v1/taxonomy.json",
+  "id": "pakistan-nadra-cnic",
+  "version": "1.0.0",
+  "displayName": "Pakistan NADRA CNIC",
+  "description": "Document Understanding taxonomy for Pakistan National Database and Registration Authority (NADRA) Computerised National Identity Card (CNIC)",
+  "locale": "en-PK",
+  "documentType": "CNIC",
+  "fields": [
+    {
+      "id": "name",
+      "displayName": "Name",
+      "description": "Full name as printed on the CNIC card",
+      "dataType": "string",
+      "required": true,
+      "confidenceThreshold": 0.85,
+      "validationRules": [
+        {
+          "type": "required",
+          "message": "Name field is mandatory"
+        },
+        {
+          "type": "maxLength",
+          "value": 100,
+          "message": "Name must not exceed 100 characters"
+        }
+      ],
+      "position": {
+        "front": true,
+        "back": false
+      }
+    },
+    {
+      "id": "fatherName",
+      "displayName": "Father Name",
+      "description": "Father's name as printed on the CNIC card",
+      "dataType": "string",
+      "required": true,
+      "confidenceThreshold": 0.85,
+      "validationRules": [
+        {
+          "type": "required",
+          "message": "Father name field is mandatory"
+        }
+      ],
+      "position": {
+        "front": true,
+        "back": false
+      }
+    },
+    {
+      "id": "cnicNumber",
+      "displayName": "CNIC Number",
+      "description": "13-digit Computerised National Identity Card number in XXXXX-XXXXXXX-X format",
+      "dataType": "string",
+      "required": true,
+      "confidenceThreshold": 0.90,
+      "validationRules": [
+        {
+          "type": "required",
+          "message": "CNIC number is mandatory"
+        },
+        {
+          "type": "regex",
+          "pattern": "^\\d{5}-\\d{7}-\\d$",
+          "message": "CNIC must follow format XXXXX-XXXXXXX-X"
+        },
+        {
+          "type": "checksum",
+          "algorithm": "mod11",
+          "message": "CNIC checksum validation failed"
+        }
+      ],
+      "position": {
+        "front": true,
+        "back": true
+      }
+    },
+    {
+      "id": "dateOfBirth",
+      "displayName": "Date of Birth",
+      "description": "Date of birth in DD-MM-YYYY format",
+      "dataType": "date",
+      "required": true,
+      "confidenceThreshold": 0.85,
+      "validationRules": [
+        {
+          "type": "required",
+          "message": "Date of birth is mandatory"
+        },
+        {
+          "type": "dateFormat",
+          "format": "dd-MM-yyyy",
+          "message": "Date of birth must be in DD-MM-YYYY format"
+        },
+        {
+          "type": "range",
+          "min": "1900-01-01",
+          "max": "current_date",
+          "message": "Date of birth must be a valid past date"
+        }
+      ],
+      "position": {
+        "front": true,
+        "back": false
+      }
+    },
+    {
+      "id": "issueDate",
+      "displayName": "Issue Date",
+      "description": "Date of issue of the CNIC in DD-MM-YYYY format",
+      "dataType": "date",
+      "required": true,
+      "confidenceThreshold": 0.85,
+      "validationRules": [
+        {
+          "type": "required",
+          "message": "Issue date is mandatory"
+        },
+        {
+          "type": "dateFormat",
+          "format": "dd-MM-yyyy",
+          "message": "Issue date must be in DD-MM-YYYY format"
+        },
+        {
+          "type": "range",
+          "min": "2000-01-01",
+          "max": "current_date",
+          "message": "Issue date must not be in the future"
+        }
+      ],
+      "position": {
+        "front": true,
+        "back": false
+      }
+    },
+    {
+      "id": "expiryDate",
+      "displayName": "Expiry Date",
+      "description": "Date of expiry of the CNIC in DD-MM-YYYY format",
+      "dataType": "date",
+      "required": true,
+      "confidenceThreshold": 0.85,
+      "validationRules": [
+        {
+          "type": "required",
+          "message": "Expiry date is mandatory"
+        },
+        {
+          "type": "dateFormat",
+          "format": "dd-MM-yyyy",
+          "message": "Expiry date must be in DD-MM-YYYY format"
+        },
+        {
+          "type": "expiryCheck",
+          "message": "CNIC has expired"
+        }
+      ],
+      "position": {
+        "front": true,
+        "back": false
+      }
+    },
+    {
+      "id": "gender",
+      "displayName": "Gender",
+      "description": "Gender indicator — M (Male) or F (Female)",
+      "dataType": "string",
+      "required": true,
+      "confidenceThreshold": 0.90,
+      "validationRules": [
+        {
+          "type": "required",
+          "message": "Gender field is mandatory"
+        },
+        {
+          "type": "enum",
+          "values": ["M", "F"],
+          "message": "Gender must be either M (Male) or F (Female)"
+        }
+      ],
+      "position": {
+        "front": true,
+        "back": false
+      }
+    },
+    {
+      "id": "address",
+      "displayName": "Address",
+      "description": "Permanent address as printed on the CNIC card",
+      "dataType": "string",
+      "required": true,
+      "multiline": true,
+      "confidenceThreshold": 0.80,
+      "validationRules": [
+        {
+          "type": "required",
+          "message": "Address field is mandatory"
+        },
+        {
+          "type": "maxLength",
+          "value": 500,
+          "message": "Address must not exceed 500 characters"
+        }
+      ],
+      "position": {
+        "front": false,
+        "back": true
+      }
+    },
+    {
+      "id": "identityNumber",
+      "displayName": "Identity Number",
+      "description": "Same as CNIC number; appears on both front and back of card",
+      "dataType": "string",
+      "required": true,
+      "confidenceThreshold": 0.90,
+      "validationRules": [
+        {
+          "type": "required",
+          "message": "Identity number is mandatory"
+        },
+        {
+          "type": "crossFieldMatch",
+          "targetField": "cnicNumber",
+          "message": "Identity number must match CNIC number on front"
+        }
+      ],
+      "position": {
+        "front": true,
+        "back": true
+      }
+    }
+  ],
+  "classifiers": [
+    {
+      "id": "front-vs-back",
+      "type": "side",
+      "options": ["front", "back"],
+      "description": "Classifies whether the scanned side is the front or back of the CNIC"
+    }
+  ],
+  "processingProfile": {
+    "ocrEngine": "UiPathDocumentOCR",
+    "ocrLanguage": ["en", "ur"],
+    "tableDetection": false,
+    "signatureDetection": false,
+    "barcodeDetection": true,
+    "extractMetadata": true
+  }
+}

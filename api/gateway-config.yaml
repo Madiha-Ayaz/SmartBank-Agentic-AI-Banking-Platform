@@ -1,0 +1,560 @@
+# =============================================================================
+# SmartBank API Gateway — Kong / APIGEE / Envoy compatible configuration
+# =============================================================================
+gateway:
+  name: smartbank-api-gateway
+  version: 7.0.0
+  environment: production
+
+  # ── Server ──────────────────────────────────────────────────────────────────
+  server:
+    listen: 0.0.0.0:8443
+    ssl:
+      enabled: true
+      certificate: /etc/gateway/certs/tls.crt
+      private_key: /etc/gateway/certs/tls.key
+      ca_bundle: /etc/gateway/certs/ca.crt
+      min_version: TLSv1.3
+      ciphers:
+        - TLS_AES_256_GCM_SHA384
+        - TLS_CHACHA20_POLY1305_SHA256
+    http2:
+      enabled: true
+    keepalive_timeout: 60s
+    proxy_read_timeout: 30s
+    proxy_connect_timeout: 10s
+    client_max_body_size: 50MB
+
+  # ── Rate Limiting ───────────────────────────────────────────────────────────
+  rate_limiting:
+    enabled: true
+    policy: local  # Options: local | redis | cluster
+    default:
+      requests_per_minute: 100
+      burst: 1000
+      period: 60
+    per_route:
+      # Auth endpoint — conservative
+      - path: /v1/auth/token
+        methods: [POST]
+        requests_per_minute: 30
+        burst: 60
+      # Customer identity — low volume
+      - path: /v1/customers/*
+        methods: [GET, PATCH]
+        requests_per_minute: 60
+        burst: 120
+      # Account balance — moderate
+      - path: /v1/accounts/*/balance
+        methods: [GET]
+        requests_per_minute: 200
+        burst: 500
+      # Account statement — can be heavy
+      - path: /v1/accounts/*/statement
+        methods: [GET]
+        requests_per_minute: 30
+        burst: 60
+      # Freeze / unfreeze — sensitive
+      - path: /v1/accounts/*/freeze
+        methods: [POST]
+        requests_per_minute: 10
+        burst: 20
+      # Card APIs — sensitive, HSM-backed
+      - path: /v1/cards/*
+        methods: [POST]
+        requests_per_minute: 15
+        burst: 30
+      # PIN generation — HSM, very sensitive
+      - path: /v1/cards/*/pin/generate
+        methods: [POST]
+        requests_per_minute: 5
+        burst: 10
+      # Digital banking
+      - path: /v1/digital/*
+        methods: [POST]
+        requests_per_minute: 20
+        burst: 40
+      # Notifications
+      - path: /v1/notifications/*
+        methods: [POST]
+        requests_per_minute: 100
+        burst: 200
+    headers:
+      - X-RateLimit-Limit
+      - X-RateLimit-Remaining
+      - X-RateLimit-Reset
+      - Retry-After
+    error_code: RATE_LIMIT_EXCEEDED
+    error_status_code: 429
+
+  # ── Throttling ─────────────────────────────────────────────────────────────
+  throttling:
+    enabled: true
+    concurrent_requests:
+      max: 500
+      per_ip: 50
+    connection_pool:
+      max: 200
+      idle_timeout: 30s
+    request_queue:
+      max_size: 1000
+      timeout: 30s
+    bandwidth:
+      per_request_max: 10MB
+      per_client_mbps: 100
+
+  # ── IP Allowlisting / Blocklisting ─────────────────────────────────────────
+  ip_filter:
+    enabled: true
+    mode: allowlist_with_blocklist_overrides  # allowlist | blocklist | hybrid
+    allowlist:
+      description: "SmartBank corporate egress CIDRs and partner IPs"
+      cidrs:
+        - 10.0.0.0/8          # Corporate internal network
+        - 172.16.0.0/12       # VPC network
+        - 192.168.0.0/16      # Management network
+        - 203.0.113.0/24      # Partner integration (example)
+    blocklist:
+      description: "Known malicious or non-compliant IP ranges"
+      cidrs:
+        - 198.51.100.0/24     # Example threat intel feed
+        - 192.0.2.0/24        # Documentation / test — block
+    trusted_proxies:
+      - 10.0.0.0/8
+      - 100.64.0.0/10
+    geo_blocking:
+      enabled: true
+      blocked_countries:
+        - ZZ  # Example — unknown/unassigned
+      allow_countries:
+        - US
+        - CA
+        - GB
+        - DE
+        - FR
+        - AU
+        - SG
+        - JP
+
+  # ── CORS ───────────────────────────────────────────────────────────────────
+  cors:
+    enabled: true
+    allowed_origins:
+      - https://smartbank.ai
+      - https://*.smartbank.ai
+      - https://banking.smartbank.ai
+      - https://admin.smartbank.ai
+      - https://localhost:3000          # Development
+      - https://localhost:5173          # Vite dev server
+    allowed_methods:
+      - GET
+      - POST
+      - PATCH
+      - PUT
+      - DELETE
+      - OPTIONS
+    allowed_headers:
+      - Authorization
+      - Content-Type
+      - X-Idempotency-Key
+      - X-Signature
+      - X-Request-Id
+      - X-Correlation-Id
+      - Origin
+      - Accept
+      - Accept-Language
+    exposed_headers:
+      - X-RateLimit-Limit
+      - X-RateLimit-Remaining
+      - X-RateLimit-Reset
+      - X-Total-Count
+      - X-Page
+      - X-Page-Size
+      - Retry-After
+      - Content-Disposition
+    allow_credentials: true
+    max_age: 86400
+    preflight_continue: false
+
+  # ── OAuth 2.0 Token Validation ─────────────────────────────────────────────
+  oauth2:
+    enabled: true
+    introspection:
+      enabled: true
+      endpoint: https://auth.smartbank.ai/v1/introspect
+      cache_ttl: 300s
+    jwt:
+      enabled: true
+      issuer: https://auth.smartbank.ai/
+      audiences:
+        - https://api.smartbank.ai
+        - smartbank-resources
+      jwks_uri: https://auth.smartbank.ai/.well-known/jwks.json
+      jwks_cache_ttl: 3600s
+      algorithms:
+        - RS256
+        - ES256
+      claims_validation:
+        required:
+          - sub
+          - iss
+          - exp
+          - scope
+        scope_delimiter: ' '
+    pkce:
+      enabled: true
+      required_for_authorization_code: true
+      code_challenge_method: S256
+    client_authentication:
+      methods:
+        - client_secret_basic
+        - client_secret_post
+        - private_key_jwt
+      tls_client_auth: true
+
+  # ── mTLS Configuration ─────────────────────────────────────────────────────
+  mtls:
+    enabled: true
+    required_for_paths:
+      - /v1/cards/*
+    optional_for_paths:
+      - /v1/auth/token
+      - /v1/customers/*
+      - /v1/accounts/*
+      - /v1/digital/*
+    ca_certificates:
+      - /etc/gateway/certs/client-ca.crt
+    verify_depth: 3
+    revocation_check:
+      enabled: true
+      method: ocsp
+      ocsp_responder: http://ocsp.smartbank.ai
+      cache_ttl: 3600s
+    certificate_mapping:
+      enabled: true
+      map_to_header: X-Client-Cert-Subject
+      map_to_header_san: X-Client-Cert-SAN
+    required_san_patterns:
+      - "*.smartbank.ai"
+      - "*.partner.smartbank.ai"
+
+  # ── Request / Response Transformation ──────────────────────────────────────
+  transformation:
+    enabled: true
+    request:
+      - operation: add_header
+        name: X-Gateway
+        value: smartbank-api-gateway/7.0
+      - operation: add_header
+        name: X-Request-Id
+        value_from: uuid
+      - operation: add_header
+        name: X-Forwarded-Proto
+        value: https
+      - operation: add_header
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains; preload
+      - operation: add_header
+        name: X-Content-Type-Options
+        value: nosniff
+      - operation: add_header
+        name: X-Frame-Options
+        value: DENY
+      - operation: add_header
+        name: Content-Security-Policy
+        value: "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+      - operation: add_header
+        name: Cache-Control
+        value: no-store
+      - operation: add_header
+        name: Pragma
+        value: no-cache
+      - operation: strip_headers
+        headers:
+          - X-Internal-*
+          - X-Debug
+          - X-Powered-By
+          - Server
+      - operation: transform_json
+        description: Remove sensitive fields from request body before upstream
+        paths:
+          - /v1/customers/*/identity
+        remove_fields:
+          - document_image_base64
+        # Image is sent directly to document store; gateway strips it from upstream
+      - operation: rewrite_path
+        from: /v1
+        to: /api/v1
+        # Internal upstream path mapping
+    response:
+      - operation: add_header
+        name: X-Gateway
+        value: smartbank-api-gateway/7.0
+      - operation: add_header
+        name: X-Request-Id
+        value_from: upstream_response
+      - operation: add_header
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains; preload
+      - operation: add_header
+        name: X-Content-Type-Options
+        value: nosniff
+      - operation: add_header
+        name: X-Frame-Options
+        value: DENY
+      - operation: add_header
+        name: Content-Security-Policy
+        value: "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+      - operation: add_header
+        name: X-Content-Type-Options
+        value: nosniff
+      - operation: strip_headers
+        headers:
+          - X-Upstream-*
+          - X-Internal-Trace
+          - Server
+          - X-Powered-By
+      - operation: transform_json
+        description: Mask PII in customer responses
+        paths:
+          - /v1/customers/*
+        mask_fields:
+          - first_name
+          - last_name
+          - email
+          - phone
+          - masked_national_id
+      - operation: compress
+        enabled: true
+        algorithms:
+          - gzip
+          - brotli
+        min_size: 1024
+
+  # ── Health Check ───────────────────────────────────────────────────────────
+  health_check:
+    enabled: true
+    endpoint: /health
+    method: GET
+    no_authentication: true
+    response:
+      status_code: 200
+      content_type: application/json
+      body:
+        status: ok
+        version: 7.0.0
+        timestamp: "${iso_timestamp}"
+        services:
+          auth: "${upstream_auth_status}"
+          core_banking: "${upstream_core_status}"
+          hsm: "${upstream_hsm_status}"
+          notification_queue: "${upstream_notification_status}"
+    probes:
+      liveness:
+        path: /health/live
+        interval: 30s
+        timeout: 5s
+        unhealthy_threshold: 3
+      readiness:
+        path: /health/ready
+        interval: 15s
+        timeout: 5s
+        unhealthy_threshold: 2
+    upstream_dependencies:
+      - name: auth_service
+        url: http://auth-service.smartbank.svc.cluster.local:8080/health
+        timeout: 3s
+        critical: true
+      - name: core_banking
+        url: http://core-banking.smartbank.svc.cluster.local:8080/health
+        timeout: 5s
+        critical: true
+      - name: hsm_service
+        url: http://hsm-service.smartbank.svc.cluster.local:8080/health
+        timeout: 3s
+        critical: false
+      - name: notification_queue
+        url: http://notification-queue.smartbank.svc.cluster.local:8080/health
+        timeout: 3s
+        critical: false
+
+  # ── Circuit Breaker ────────────────────────────────────────────────────────
+  circuit_breaker:
+    enabled: true
+    per_route:
+      - path: /v1/cards/*/pin/generate
+        failure_threshold: 5
+        failure_timeout: 60s
+        half_open_after: 30s
+        consecutive_successes_to_close: 3
+        monitored_statuses:
+          - 500
+          - 502
+          - 503
+          - 504
+          - 408
+        description: "HSM service circuit breaker — PIN generation"
+      - path: /v1/auth/token
+        failure_threshold: 10
+        failure_timeout: 30s
+        half_open_after: 15s
+        consecutive_successes_to_close: 5
+        monitored_statuses:
+          - 500
+          - 502
+          - 503
+          - 504
+        description: "Auth service circuit breaker"
+      - path: /v1/accounts/*/balance
+        failure_threshold: 15
+        failure_timeout: 30s
+        half_open_after: 15s
+        consecutive_successes_to_close: 5
+        monitored_statuses:
+          - 500
+          - 502
+          - 503
+          - 504
+        description: "Core banking circuit breaker"
+      - path: /v1/notifications/*
+        failure_threshold: 20
+        failure_timeout: 60s
+        half_open_after: 30s
+        consecutive_successes_to_close: 5
+        monitored_statuses:
+          - 500
+          - 502
+          - 503
+          - 504
+        description: "Notification service circuit breaker"
+    default:
+      failure_threshold: 10
+      failure_timeout: 30s
+      half_open_after: 15s
+      consecutive_successes_to_close: 5
+      monitored_statuses:
+        - 500
+        - 502
+        - 503
+        - 504
+    fallback_response:
+      status_code: 503
+      body:
+        error:
+          code: SERVICE_UNAVAILABLE
+          message: The upstream service is temporarily unavailable. Please retry later.
+
+  # ── Upstream Services ──────────────────────────────────────────────────────
+  upstreams:
+    auth_service:
+      host: auth-service.smartbank.svc.cluster.local
+      port: 8080
+      protocol: https
+      load_balancing: round_robin
+      health_check:
+        path: /health
+        interval: 10s
+      retry:
+        attempts: 3
+        backoff: exponential
+        max_delay: 5s
+    core_banking_service:
+      host: core-banking.smartbank.svc.cluster.local
+      port: 8080
+      protocol: https
+      load_balancing: least_connections
+      health_check:
+        path: /health
+        interval: 10s
+    hsm_service:
+      host: hsm-service.smartbank.svc.cluster.local
+      port: 8443
+      protocol: https
+      load_balancing: round_robin
+      timeout: 10s
+    notification_service:
+      host: notification-queue.smartbank.svc.cluster.local
+      port: 8080
+      protocol: https
+      load_balancing: round_robin
+      timeout: 30s
+    document_store_service:
+      host: document-store.smartbank.svc.cluster.local
+      port: 8080
+      protocol: https
+      load_balancing: round_robin
+      timeout: 60s
+
+  # ── Logging & Observability ────────────────────────────────────────────────
+  logging:
+    access_log:
+      enabled: true
+      format: json
+      fields:
+        - request_id
+        - client_ip
+        - method
+        - path
+        - status
+        - response_time_ms
+        - user_agent
+        - rate_limit_remaining
+        - upstream_latency_ms
+    error_log:
+      level: warn
+      format: json
+    tracing:
+      enabled: true
+      sampling_rate: 0.1
+      exporter: otlp
+      endpoint: http://otel-collector.smartbank.svc.cluster.local:4318
+    metrics:
+      enabled: true
+      endpoint: /metrics
+      format: prometheus
+
+  # ── Security ───────────────────────────────────────────────────────────────
+  security:
+    ddos_protection:
+      enabled: true
+      max_connections_per_ip: 100
+      rate_limit_syn_flood: true
+    waf:
+      enabled: true
+      ruleset: owasp_crs_3.3
+      custom_rules:
+        - name: block_sql_injection
+          severity: critical
+        - name: block_xss
+          severity: critical
+        - name: block_path_traversal
+          severity: critical
+    bot_detection:
+      enabled: true
+      challenge_on_suspicious: true
+    jwt_validation:
+      enabled: true
+      allow_expired_max_seconds: 30
+    ip_whitelist_for_internal:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+    hsts:
+      enabled: true
+      max_age: 31536000
+      include_subdomains: true
+      preload: true
+    content_security_policy:
+      enabled: true
+      policy: "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    x_frame_options:
+      enabled: true
+      value: DENY
+    x_content_type_options:
+      enabled: true
+      value: nosniff
+    referrer_policy:
+      enabled: true
+      value: no-referrer
+    permissions_policy:
+      enabled: true
+      value: "camera=(), microphone=(), geolocation=()"

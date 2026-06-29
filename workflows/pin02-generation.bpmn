@@ -1,0 +1,383 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_Pin02Generation" targetNamespace="http://smartbank.ai/bpmn" exporter="SmartBank Maestro Designer" exporterVersion="1.0">
+  <bpmn:process id="Pin02Generation" name="PIN Generation/Reset" isExecutable="true" processType="Private">
+    <bpmn:extensions>
+      <bpmn:property id="namespace" value="http://smartbank.ai/pin" />
+      <bpmn:property id="version" value="1.0.0" />
+      <bpmn:property id="riskLevel" value="High" />
+      <bpmn:property id="requiresApproval" value="true" />
+      <bpmn:property id="description" value="Generates or resets ATM PIN. Requires manager approval due to high risk." />
+    </bpmn:extensions>
+
+    <!-- Process Variables -->
+    <bpmn:property id="caseId" name="caseId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="customerId" name="customerId" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="requestPayload" name="requestPayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="responsePayload" name="responsePayload" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="cardNumber" name="cardNumber" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="pinGenerationMethod" name="pinGenerationMethod" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="approvalStatus" name="approvalStatus" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="pinHash" name="pinHash" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="errorCode" name="errorCode" itemSubjectRef="ItemDef_String" />
+    <bpmn:property id="retryCount" name="retryCount" itemSubjectRef="ItemDef_Int" />
+    <bpmn:property id="requiresApproval" name="requiresApproval" itemSubjectRef="ItemDef_Boolean" />
+
+    <bpmn:itemDefinition id="ItemDef_String" structureRef="xsd:string" />
+    <bpmn:itemDefinition id="ItemDef_Int" structureRef="xsd:int" />
+    <bpmn:itemDefinition id="ItemDef_Boolean" structureRef="xsd:boolean" />
+
+    <!-- Start Event -->
+    <bpmn:startEvent id="StartEvent_PIN02" name="PIN Reset Request">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="signal" />
+        <bpmn:property id="signalName" value="SmartBank.PIN02.Generate" />
+      </bpmn:extensionElements>
+    </bpmn:startEvent>
+
+    <!-- Service Task 1: Verify Customer Identity -->
+    <bpmn:serviceTask id="ServiceTask_VerifyIdentity" name="Verify Customer Identity" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/customer/verify" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="15000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="Identity Verification Service" />
+        <bpmn:property id="inputs" value="customerId, requestPayload" />
+        <bpmn:property id="outputs" value="approvalStatus" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_VerifyIdentity" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_PIN02_Verify">
+        <bpmn:targetRef>DataInput_VerifyIdentity</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId, requestPayload}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_VerifyIdentity</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_PIN02_Verify">
+        <bpmn:sourceRef>DataOutput_VerifyIdentity</bpmn:sourceRef>
+        <bpmn:targetRef>approvalStatus</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_VerifyIdentity</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">approvalStatus</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <!-- Error Boundary -->
+    <bpmn:boundaryEvent id="BoundaryError_PIN02_Verify" attachedToRef="ServiceTask_VerifyIdentity">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_PIN02_Verify" errorRef="Error_IdentityVerification" />
+    </bpmn:boundaryEvent>
+
+    <!-- Timer Boundary -->
+    <bpmn:boundaryEvent id="BoundaryTimer_PIN02_Verify" attachedToRef="ServiceTask_VerifyIdentity">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_PIN02_Verify">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT30S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Identity Verified? -->
+    <bpmn:exclusiveGateway id="Gateway_IdentityVerified" name="Identity Verified?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_PIN02_Start_To_Verify" name="" sourceRef="StartEvent_PIN02" targetRef="ServiceTask_VerifyIdentity" />
+    <bpmn:sequenceFlow id="Flow_PIN02_Verify_To_Gateway" name="" sourceRef="ServiceTask_VerifyIdentity" targetRef="Gateway_IdentityVerified" />
+
+    <!-- User Task: Manager Approval (High Risk) -->
+    <bpmn:sequenceFlow id="Flow_PIN02_Verified" name="Verified" sourceRef="Gateway_IdentityVerified" targetRef="UserTask_ManagerApproval">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "Verified"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:userTask id="UserTask_ManagerApproval" name="Manager Approval" implementation="UiPath.Persona.Manager">
+      <bpmn:extensionElements>
+        <bpmn:property id="taskQueue" value="SmartBank.ManagerApproval.PIN" />
+        <bpmn:property id="priority" value="High" />
+        <bpmn:property id="slaTimeout" value="PT4H" />
+        <bpmn:property id="escalationAfter" value="PT1H" />
+        <bpmn:property id="formType" value="SmartBank.PINResetApproval.v1" />
+        <bpmn:property id="performer" value="Branch Manager" />
+        <bpmn:property id="inputs" value="customerId, cardNumber, pinGenerationMethod" />
+        <bpmn:property id="outputs" value="approvalStatus" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_PIN02Approval" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_PIN02_Approval">
+        <bpmn:targetRef>DataInput_Approval</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{customerId, cardNumber, pinGenerationMethod}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_Approval</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_PIN02_Approval">
+        <bpmn:sourceRef>DataOutput_Approval</bpmn:sourceRef>
+        <bpmn:targetRef>approvalStatus</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_Approval</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">approvalStatus</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:userTask>
+
+    <!-- Timer Boundary on Manager Approval -->
+    <bpmn:boundaryEvent id="BoundaryTimer_PIN02_Approval" attachedToRef="UserTask_ManagerApproval">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_PIN02_Approval">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT4H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: Approved? -->
+    <bpmn:exclusiveGateway id="Gateway_Approved" name="Approved?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_PIN02_Approval_To_Gateway" name="" sourceRef="UserTask_ManagerApproval" targetRef="Gateway_Approved" />
+
+    <!-- Service Task 3: Generate PIN -->
+    <bpmn:sequenceFlow id="Flow_PIN02_Approved" name="Approved" sourceRef="Gateway_Approved" targetRef="ServiceTask_GeneratePIN">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "Approved"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="ServiceTask_GeneratePIN" name="Generate PIN" implementation="UiPath.Integration.Service">
+      <bpmn:extensionElements>
+        <bpmn:property id="endpoint" value="https://api.smartbank.ai/v1/pin/generate" />
+        <bpmn:property id="method" value="POST" />
+        <bpmn:property id="retryMaxAttempts" value="3" />
+        <bpmn:property id="retryBackoffBase" value="2.0" />
+        <bpmn:property id="retryInitialDelayMs" value="1000" />
+        <bpmn:property id="timeout" value="15000" />
+        <bpmn:property id="slaTimeout" value="PT30S" />
+        <bpmn:property id="performer" value="PIN Generation Service" />
+        <bpmn:property id="inputs" value="cardNumber, pinGenerationMethod" />
+        <bpmn:property id="outputs" value="pinHash, responsePayload" />
+      </bpmn:extensionElements>
+      <bpmn:ioBinding operationRef="Operation_GeneratePIN" />
+      <bpmn:dataInputAssociation id="DataInputAssociation_PIN02_Generate">
+        <bpmn:targetRef>DataInput_GeneratePIN</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">{cardNumber, pinGenerationMethod}</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">DataInput_GeneratePIN</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataInputAssociation>
+      <bpmn:dataOutputAssociation id="DataOutputAssociation_PIN02_Generate">
+        <bpmn:sourceRef>DataOutput_GeneratePIN</bpmn:sourceRef>
+        <bpmn:targetRef>responsePayload</bpmn:targetRef>
+        <bpmn:assignment>
+          <bpmn:from xsi:type="bpmn:tFormalExpression">DataOutput_GeneratePIN</bpmn:from>
+          <bpmn:to xsi:type="bpmn:tFormalExpression">responsePayload</bpmn:to>
+        </bpmn:assignment>
+      </bpmn:dataOutputAssociation>
+    </bpmn:serviceTask>
+
+    <!-- Error Boundary -->
+    <bpmn:boundaryEvent id="BoundaryError_PIN02_Generate" attachedToRef="ServiceTask_GeneratePIN">
+      <bpmn:errorEventDefinition id="ErrorEventDefinition_PIN02_Generate" errorRef="Error_PINGeneration" />
+    </bpmn:boundaryEvent>
+
+    <!-- Timer Boundary -->
+    <bpmn:boundaryEvent id="BoundaryTimer_PIN02_Generate" attachedToRef="ServiceTask_GeneratePIN">
+      <bpmn:timerEventDefinition id="TimerEventDefinition_PIN02_Generate">
+        <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT30S</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <!-- Gateway: PIN Generated? -->
+    <bpmn:exclusiveGateway id="Gateway_PINGenerated" name="PIN Generated?" gatewayDirection="Diverging" />
+
+    <bpmn:sequenceFlow id="Flow_PIN02_Generate_To_Gateway" name="" sourceRef="ServiceTask_GeneratePIN" targetRef="Gateway_PINGenerated" />
+
+    <!-- End Success -->
+    <bpmn:sequenceFlow id="Flow_PIN02_Success" name="Success" sourceRef="Gateway_PINGenerated" targetRef="EndEvent_PIN02_Success">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">IsNothing(errorCode)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_PIN02_Success" name="PIN Generated">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.PIN02.Generated" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- Failure Paths -->
+    <bpmn:sequenceFlow id="Flow_PIN02_NotVerified" name="Not Verified" sourceRef="Gateway_IdentityVerified" targetRef="EndEvent_PIN02_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "NotVerified"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_PIN02_Rejected" name="Rejected" sourceRef="Gateway_Approved" targetRef="EndEvent_PIN02_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">approvalStatus = "Rejected"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_PIN02_Failed" name="Failed" sourceRef="Gateway_PINGenerated" targetRef="EndEvent_PIN02_Failed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="UiPath">Not IsNothing(errorCode)</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:endEvent id="EndEvent_PIN02_Failed" name="PIN Generation Failed">
+      <bpmn:extensionElements>
+        <bpmn:property id="eventType" value="message" />
+        <bpmn:property id="messageName" value="SmartBank.PIN02.Failed" />
+      </bpmn:extensionElements>
+    </bpmn:endEvent>
+
+    <!-- Error Boundary Flows -->
+    <bpmn:sequenceFlow id="Flow_PIN02_Error_Verify" name="Identity Error" sourceRef="BoundaryError_PIN02_Verify" targetRef="EndEvent_PIN02_Failed" />
+    <bpmn:sequenceFlow id="Flow_PIN02_Timer_Verify" name="SLA Breach" sourceRef="BoundaryTimer_PIN02_Verify" targetRef="EndEvent_PIN02_Failed" />
+    <bpmn:sequenceFlow id="Flow_PIN02_Timer_Approval" name="Approval SLA" sourceRef="BoundaryTimer_PIN02_Approval" targetRef="EndEvent_PIN02_Failed" />
+    <bpmn:sequenceFlow id="Flow_PIN02_Error_Generate" name="PIN Error" sourceRef="BoundaryError_PIN02_Generate" targetRef="EndEvent_PIN02_Failed" />
+    <bpmn:sequenceFlow id="Flow_PIN02_Timer_Generate" name="Gen SLA" sourceRef="BoundaryTimer_PIN02_Generate" targetRef="EndEvent_PIN02_Failed" />
+
+    <!-- Error Definitions -->
+    <bpmn:error id="Error_IdentityVerification" name="IdentityVerificationError" errorCode="ERR_IDENTITY_VERIFICATION" />
+    <bpmn:error id="Error_PINGeneration" name="PINGenerationError" errorCode="ERR_PIN_GENERATION" />
+  </bpmn:process>
+
+  <bpmn:interface id="Interface_PIN02" name="PIN API Interface">
+    <bpmn:operation id="Operation_VerifyIdentity" name="VerifyIdentity" implementationRef="SmartBank.API.VerifyIdentity">
+      <bpmn:inMessageRef>Message_VerifyIdentityRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_VerifyIdentityResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_PIN02Approval" name="PINResetApproval" implementationRef="SmartBank.UI.PINResetApproval">
+      <bpmn:inMessageRef>Message_PIN02ApprovalRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_PIN02ApprovalResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+    <bpmn:operation id="Operation_GeneratePIN" name="GeneratePIN" implementationRef="SmartBank.API.GeneratePIN">
+      <bpmn:inMessageRef>Message_GeneratePINRequest</bpmn:inMessageRef>
+      <bpmn:outMessageRef>Message_GeneratePINResponse</bpmn:outMessageRef>
+    </bpmn:operation>
+  </bpmn:interface>
+
+  <bpmn:message id="Message_VerifyIdentityRequest" name="SmartBank.VerifyIdentityRequest.v1" />
+  <bpmn:message id="Message_VerifyIdentityResponse" name="SmartBank.VerifyIdentityResponse.v1" />
+  <bpmn:message id="Message_PIN02ApprovalRequest" name="SmartBank.PINResetApprovalRequest.v1" />
+  <bpmn:message id="Message_PIN02ApprovalResponse" name="SmartBank.PINResetApprovalResponse.v1" />
+  <bpmn:message id="Message_GeneratePINRequest" name="SmartBank.GeneratePINRequest.v1" />
+  <bpmn:message id="Message_GeneratePINResponse" name="SmartBank.GeneratePINResponse.v1" />
+
+  <bpmn:dataInput id="DataInput_VerifyIdentity" name="VerifyIdentityInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_VerifyIdentity" name="VerifyIdentityOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_Approval" name="ApprovalInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_Approval" name="ApprovalOutput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataInput id="DataInput_GeneratePIN" name="GeneratePINInput" itemSubjectRef="ItemDef_String" />
+  <bpmn:dataOutput id="DataOutput_GeneratePIN" name="GeneratePINOutput" itemSubjectRef="ItemDef_String" />
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_PIN02" name="PIN Generation Diagram">
+    <bpmndi:BPMNPlane id="BPMNPlane_PIN02" bpmnElement="Pin02Generation">
+      <bpmndi:BPMNShape id="Shape_PIN02_Start" bpmnElement="StartEvent_PIN02">
+        <dc:Bounds x="50" y="200" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_PIN02_Verify" bpmnElement="ServiceTask_VerifyIdentity">
+        <dc:Bounds x="160" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_PIN02_Gateway_Ident" bpmnElement="Gateway_IdentityVerified">
+        <dc:Bounds x="350" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_PIN02_Approval" bpmnElement="UserTask_ManagerApproval">
+        <dc:Bounds x="470" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_PIN02_Gateway_Approved" bpmnElement="Gateway_Approved">
+        <dc:Bounds x="660" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_PIN02_Generate" bpmnElement="ServiceTask_GeneratePIN">
+        <dc:Bounds x="780" y="178" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_PIN02_Gateway_Generated" bpmnElement="Gateway_PINGenerated">
+        <dc:Bounds x="970" y="188" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_PIN02_End_Success" bpmnElement="EndEvent_PIN02_Success">
+        <dc:Bounds x="1100" y="150" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_PIN02_End_Failed" bpmnElement="EndEvent_PIN02_Failed">
+        <dc:Bounds x="1100" y="260" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_PIN02_Error_Verify" bpmnElement="BoundaryError_PIN02_Verify">
+        <dc:Bounds x="180" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_PIN02_Timer_Verify" bpmnElement="BoundaryTimer_PIN02_Verify">
+        <dc:Bounds x="224" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_PIN02_Timer_Approval" bpmnElement="BoundaryTimer_PIN02_Approval">
+        <dc:Bounds x="512" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_PIN02_Error_Generate" bpmnElement="BoundaryError_PIN02_Generate">
+        <dc:Bounds x="800" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_PIN02_Timer_Generate" bpmnElement="BoundaryTimer_PIN02_Generate">
+        <dc:Bounds x="844" y="258" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Edge_PIN02_Start_To_Verify" bpmnElement="Flow_PIN02_Start_To_Verify">
+        <di:waypoint x="86" y="218" />
+        <di:waypoint x="160" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_Verify_To_Gateway" bpmnElement="Flow_PIN02_Verify_To_Gateway">
+        <di:waypoint x="280" y="218" />
+        <di:waypoint x="350" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_Verified" bpmnElement="Flow_PIN02_Verified">
+        <di:waypoint x="400" y="213" />
+        <di:waypoint x="470" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_Approval_To_Gateway" bpmnElement="Flow_PIN02_Approval_To_Gateway">
+        <di:waypoint x="590" y="218" />
+        <di:waypoint x="660" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_Approved" bpmnElement="Flow_PIN02_Approved">
+        <di:waypoint x="710" y="213" />
+        <di:waypoint x="780" y="218" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_Generate_To_Gateway" bpmnElement="Flow_PIN02_Generate_To_Gateway">
+        <di:waypoint x="900" y="218" />
+        <di:waypoint x="970" y="213" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_Success" bpmnElement="Flow_PIN02_Success">
+        <di:waypoint x="1020" y="213" />
+        <di:waypoint x="1100" y="168" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_NotVerified" bpmnElement="Flow_PIN02_NotVerified">
+        <di:waypoint x="375" y="238" />
+        <di:waypoint x="375" y="320" />
+        <di:waypoint x="1118" y="320" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_Rejected" bpmnElement="Flow_PIN02_Rejected">
+        <di:waypoint x="685" y="238" />
+        <di:waypoint x="685" y="320" />
+        <di:waypoint x="1118" y="320" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_Failed" bpmnElement="Flow_PIN02_Failed">
+        <di:waypoint x="995" y="238" />
+        <di:waypoint x="995" y="320" />
+        <di:waypoint x="1118" y="320" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_Error_Verify" bpmnElement="Flow_PIN02_Error_Verify">
+        <di:waypoint x="198" y="294" />
+        <di:waypoint x="198" y="360" />
+        <di:waypoint x="1118" y="360" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_Timer_Verify" bpmnElement="Flow_PIN02_Timer_Verify">
+        <di:waypoint x="242" y="294" />
+        <di:waypoint x="242" y="380" />
+        <di:waypoint x="1118" y="380" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_Timer_Approval" bpmnElement="Flow_PIN02_Timer_Approval">
+        <di:waypoint x="530" y="258" />
+        <di:waypoint x="530" y="340" />
+        <di:waypoint x="1118" y="340" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_Error_Generate" bpmnElement="Flow_PIN02_Error_Generate">
+        <di:waypoint x="818" y="294" />
+        <di:waypoint x="818" y="360" />
+        <di:waypoint x="1118" y="360" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_PIN02_Timer_Generate" bpmnElement="Flow_PIN02_Timer_Generate">
+        <di:waypoint x="862" y="294" />
+        <di:waypoint x="862" y="380" />
+        <di:waypoint x="1118" y="380" />
+        <di:waypoint x="1118" y="296" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

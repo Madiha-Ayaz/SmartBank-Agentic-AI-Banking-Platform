@@ -1,0 +1,29 @@
+{
+  "name": "smartbank",
+  "version": "2.0.0",
+  "description": "Agentic AI Banking Operations Platform",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix ui run dev",
+    "build": "npm --prefix ui run build",
+    "preview": "npm --prefix ui run preview",
+    "server": "node server.js",
+    "start": "node server.js & npm --prefix ui run dev",
+    "start:win": "start \"SmartBank API\" cmd /c \"node server.js\" && start \"SmartBank UI\" cmd /c \"cd ui && npm run dev\" && start http://localhost:5173",
+    "test": "python -m pytest",
+    "lint": "python -m flake8 agents/ document-ai/ robots/"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "firebase-admin": "^14.1.0",
+    "gsap": "^3.9.1",
+    "multer": "^2.2.0",
+    "pg": "^8.22.0",
+    "three": "^0.136.0",
+    "twilio": "^6.0.2"
+  }
+}
