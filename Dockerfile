@@ -14,4 +14,5 @@ COPY . .
 
 EXPOSE 7860
 
-CMD node server.js
+RUN chmod +x start.sh
+CMD ./start.sh
