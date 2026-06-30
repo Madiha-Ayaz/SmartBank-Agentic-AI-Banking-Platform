@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.auth import get_current_user
 
