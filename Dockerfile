@@ -2,7 +2,7 @@ FROM nikolaik/python-nodejs:python3.10-nodejs18
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y git git-lfs && rm -rf /lib/apt/lists/*
+RUN apt-get update && apt-get install -y git git-lfs && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
 RUN npm ci --omit=dev
@@ -14,4 +14,4 @@ COPY . .
 
 EXPOSE 7860
 
-CMD node server.js & python backend/app.py
+CMD node server.js & python backend/main.py
