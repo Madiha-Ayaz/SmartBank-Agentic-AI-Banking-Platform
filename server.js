@@ -7208,6 +7208,23 @@ app.post('/webhooks/whatsapp', async (req, res) => {
 });
 
 // ============================================================================
+// Root — Simple status page
+// ============================================================================
+app.get('/', (req, res) => {
+  res.json({
+    service: 'SmartBank Backend Engine',
+    version: '2.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/api/health',
+      webhook_verify: 'GET /webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=smartbank_verify_2026&hub.challenge=CHALLENGE',
+      webhook_receive: 'POST /webhooks/whatsapp',
+      api: '/api',
+    },
+  });
+});
+
+// ============================================================================
 // START
 // ============================================================================
 app.listen(PORT, '0.0.0.0', () => {
