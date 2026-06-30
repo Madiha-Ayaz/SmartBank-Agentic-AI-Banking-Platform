@@ -14,4 +14,4 @@ COPY . .
 
 EXPOSE 7860
 
-CMD node server.js & python -m backend.main
+CMD node server.js
